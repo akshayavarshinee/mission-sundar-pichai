@@ -169,6 +169,36 @@ class EasyPostClient:
             )
 
         rates = getattr(shipment, "rates", []) or []
+
+        # ClearPort compliance backstop: EasyPost test mode accepts some
+        # declarations that still violate real customs/FTR policy (e.g. an empty
+        # customs_signer, or NOEEI claimed at/above the $2,500 EEI threshold).
+        # We still made the real carrier calls above (real CustomsInfo + Shipment
+        # IDs), but ClearPort's own pre-submission lint catches what the raw
+        # carrier validation misses, producing a deterministic rejection.
+        violation = policy_lint(payload)
+        if violation is not None:
+            logger.info(
+                "easypost.compliance_backstop.rejected",
+                customs_info_id=customs_info.id,
+                shipment_id=shipment.id,
+                rule=violation.value,
+            )
+            return ValidationResult(
+                ok=False,
+                customs_info_id=customs_info.id,
+                shipment_id=shipment.id,
+                rates_count=len(rates),
+                raw_error=RawError(
+                    code=violation.value,
+                    message=(
+                        f"ClearPort compliance check failed after EasyPost "
+                        f"acceptance: declaration violates rule {violation.value}"
+                    ),
+                    field=None,
+                ),
+            )
+
         return ValidationResult(
             ok=True,
             customs_info_id=customs_info.id,
