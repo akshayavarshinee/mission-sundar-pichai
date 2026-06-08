@@ -1,0 +1,47 @@
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# ── Env & secrets (NEVER commit real keys) ────────────────────────────────
+.env
+.env.local
+*.local.env
+secrets/
+*.pem
+*.key
+
+# ── Tooling caches ────────────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Node / dashboard ──────────────────────────────────────────────────────
+node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/dist/
+npm-debug.log*
+
+# ── Local data / Phoenix / Postgres volumes ───────────────────────────────
+.phoenix/
+pgdata/
+*.sqlite
+*.db
+local_traces/
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

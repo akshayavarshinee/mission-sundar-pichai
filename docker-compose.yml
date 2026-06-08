@@ -1,0 +1,45 @@
+# ──────────────────────────────────────────────────────────────────────────
+# ClearPort — local development stack.
+#   • phoenix  : Arize Phoenix (traces, datasets, experiments, evals UI)
+#   • db       : Postgres + pgvector (memory tiers ① law / ③ lessons + state)
+# The Phoenix MCP server (@arizeai/phoenix-mcp) is launched via npx by the
+# agent process (see clearport/arize/mcp_client.py), not as a container.
+# ──────────────────────────────────────────────────────────────────────────
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: clearport-phoenix
+    ports:
+      - "6006:6006"   # UI + OTel HTTP collector
+      - "4317:4317"   # OTLP gRPC collector
+    environment:
+      - PHOENIX_WORKING_DIR=/data
+    volumes:
+      - phoenix_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6006')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: clearport-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=clearport
+      - POSTGRES_PASSWORD=clearport
+      - POSTGRES_DB=clearport
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/cloudsql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clearport -d clearport"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  phoenix_data:
+  pgdata:

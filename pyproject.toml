@@ -1,0 +1,95 @@
+[project]
+name = "clearport"
+version = "0.1.0"
+description = "ClearPort — autonomous customs-recovery agent with an Arize Phoenix evaluation conscience."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "ClearPort Contributors" }]
+keywords = ["agents", "customs", "arize", "phoenix", "gemini", "mcp", "evaluation"]
+
+dependencies = [
+    # ── Agent runtime (Gemini 3 + Google Cloud Agent Builder / ADK) ──
+    "google-adk>=1.0.0",
+    "google-genai>=1.0.0",
+    "google-cloud-aiplatform>=1.60.0",
+
+    # ── Arize Phoenix: tracing, evals, client (the trust layer) ──
+    "arize-phoenix>=17.0.0",
+    "arize-phoenix-otel>=0.6.0",
+    "arize-phoenix-evals>=0.17.0",
+    "arize-phoenix-client>=1.0.0",
+    "openinference-instrumentation-google-adk>=0.1.0",
+    "openinference-instrumentation-google-genai>=0.1.0",
+    "openinference-instrumentation-mcp>=0.1.0",
+
+    # ── Model Context Protocol client (to talk to @arizeai/phoenix-mcp) ──
+    "mcp>=1.2.0",
+
+    # ── Carrier (live customs validation, test mode) ──
+    "easypost>=9.0.0",
+
+    # ── Backend API + live streaming to the dashboard ──
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sse-starlette>=2.1.0",
+    "httpx>=0.27.0",
+
+    # ── Data + persistence (memory tiers ① / ③ + app state) ──
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "sqlalchemy>=2.0.35",
+    "psycopg[binary]>=3.2.0",
+    "pgvector>=0.3.0",
+
+    # ── Utilities ──
+    "python-dotenv>=1.0.1",
+    "structlog>=24.4.0",
+    "tenacity>=9.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "respx>=0.21.0",            # httpx mocking for tests
+    "ruff>=0.7.0",
+    "mypy>=1.11.0",
+]
+
+[project.scripts]
+clearport-hello-trace = "clearport.scripts.hello_trace:main"
+clearport-mcp-handshake = "clearport.scripts.mcp_handshake:main"
+clearport-api = "clearport.api.main:run"
+clearport-demo = "clearport.scripts.demo:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["clearport"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+# S101: allow asserts in tests; handled per-file below.
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+ignore_missing_imports = true
