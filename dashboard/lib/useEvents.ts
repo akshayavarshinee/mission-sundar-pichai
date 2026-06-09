@@ -16,6 +16,7 @@ const EVENT_TYPES = [
   "run_created",
   "run_approved",
   "run_rejected",
+  "run_corrected",
   "metrics",
   "law_veto",
   "lesson_promoted",

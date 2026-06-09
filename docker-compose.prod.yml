@@ -1,0 +1,101 @@
+# ──────────────────────────────────────────────────────────────────────────
+# ClearPort — production stack (single GCE VM).
+# Runs the whole system as four containers on one Always-On VM:
+#   • backend   : FastAPI + agent loop      (image from Artifact Registry)
+#   • dashboard : Next.js UI                 (image from Artifact Registry)
+#   • phoenix   : Arize Phoenix (self-hosted, traces/evals UI + OTLP collector)
+#   • db        : Postgres + pgvector        (memory tiers ① law / ③ lessons)
+#
+# Variable substitution (BACKEND_IMAGE, DASHBOARD_IMAGE, GOOGLE_API_KEY, …) is
+# supplied via a sibling `.env` file written by the GitHub Actions deploy job.
+# Bring up with:  docker compose -f docker-compose.prod.yml up -d
+# ──────────────────────────────────────────────────────────────────────────
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: clearport-phoenix
+    restart: unless-stopped
+    ports:
+      - "6006:6006"   # UI + OTLP/HTTP collector (backend exports here)
+      - "4317:4317"   # OTLP/gRPC collector (optional)
+    environment:
+      - PHOENIX_WORKING_DIR=/data
+    volumes:
+      - phoenix_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6006')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: clearport-db
+    restart: unless-stopped
+    # Not published to the host — only reachable on the internal compose network.
+    expose:
+      - "5432"
+    environment:
+      - POSTGRES_USER=clearport
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-clearport}
+      - POSTGRES_DB=clearport
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/cloudsql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clearport -d clearport"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${BACKEND_IMAGE}
+    container_name: clearport-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      phoenix:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      - CLEARPORT_ENV=cloud
+      - PORT=8080
+      # ── Gemini brain (AI Studio API key) ──
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GOOGLE_GENAI_USE_VERTEXAI=false
+      - CLEARPORT_GEMINI_MODEL=${CLEARPORT_GEMINI_MODEL:-gemini-3-pro}
+      - CLEARPORT_JUDGE_MODEL=${CLEARPORT_JUDGE_MODEL:-gemini-3-pro}
+      # ── Self-hosted Phoenix on the same VM ──
+      - PHOENIX_HOST=http://phoenix:6006
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+      - PHOENIX_PROJECT=clearport
+      # ── Postgres + pgvector memory ──
+      - DATABASE_URL=postgresql+psycopg://clearport:${POSTGRES_PASSWORD:-clearport}@db:5432/clearport
+      - CLEARPORT_VECTOR_BACKEND=pg
+      - CLEARPORT_EMBEDDINGS_BACKEND=auto
+      # ── EasyPost (optional test key) ──
+      - EASYPOST_API_KEY=${EASYPOST_API_KEY:-}
+      - EASYPOST_MODE=test
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  dashboard:
+    image: ${DASHBOARD_IMAGE}
+    container_name: clearport-dashboard
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+
+volumes:
+  phoenix_data:
+  pgdata:

@@ -1,61 +1,95 @@
-# Deploying ClearPort (both surfaces)
+# Deploying ClearPort to GCP (single VM, push-to-main)
 
-ClearPort hosts **two** surfaces, matching the locked decision:
+ClearPort runs as **four containers on one Always-On GCE VM**, deployed
+automatically on every push to `main`:
 
-1. **Web dashboard** — the cinematic, judge-usable UI (Next.js).
-2. **Agent Builder app** — the ADK `root_agent` published in Vertex AI Agent
-   Builder (link it from the dashboard header).
+| Container   | Image                                       | Port | Purpose                          |
+| ----------- | ------------------------------------------- | ---- | -------------------------------- |
+| `backend`   | Artifact Registry (`clearport-api`)         | 8080 | FastAPI + agent loop             |
+| `dashboard` | Artifact Registry (`clearport-dashboard`)   | 3000 | Next.js UI                       |
+| `phoenix`   | `arizephoenix/phoenix` (self-hosted)        | 6006 | Tracing / evals — **no API key** |
+| `db`        | `pgvector/pgvector:pg16`                     | 5432 | Memory tiers ① law / ③ lessons   |
 
-Both the backend and the dashboard deploy to **Cloud Run** from source (Cloud
-Build builds the Dockerfiles in `../../Dockerfile` and `../../dashboard/Dockerfile`).
+> Self-hosted Phoenix means **no Arize account / API key** is required — the
+> backend exports traces over OTLP/HTTP to `http://phoenix:6006` on the same
+> internal network.
 
-## 1. Prerequisites
+## 1. One-time provisioning
 
-```bash
-gcloud auth login
-gcloud config set project "$PROJECT_ID"
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com aiplatform.googleapis.com
-```
-
-## 2. Deploy the backend
+From a machine with the `gcloud` CLI authenticated as a project owner:
 
 ```bash
-PROJECT_ID=my-proj REGION=us-central1 ./deploy_backend.sh
-# → prints the backend URL, e.g. https://clearport-api-xxxx.run.app
+cd infra/deploy
+PROJECT_ID=my-proj GITHUB_REPO=my-org/clearport ./setup_gcp.sh
 ```
 
-The backend boots **fully offline** (deterministic fallbacks for EasyPost,
-Phoenix MCP, Vertex embeddings, Gemini, and Postgres), so it is demo-ready with
-zero secrets. To progressively enable live services, set the corresponding env
-vars / Secret Manager references (see `clearport/config.py`):
+This enables APIs, creates an Artifact Registry repo, a reserved static IP, an
+`e2-medium` VM with Docker, firewall rules, a deploy service account, and
+**Workload Identity Federation** (so CI needs no long-lived JSON key). It prints
+the exact GitHub values to configure next.
 
-| Capability        | Enable with                                             |
-| ----------------- | ------------------------------------------------------- |
-| Gemini 3 brain    | `GOOGLE_API_KEY` (or Vertex creds) + `CLEARPORT_LLM_*`  |
-| Phoenix tracing   | `PHOENIX_COLLECTOR_ENDPOINT`, `PHOENIX_API_KEY`         |
-| Phoenix MCP       | `CLEARPORT_EPISODIC_BACKEND=phoenix`, MCP url/key       |
-| Vertex embeddings | `CLEARPORT_EMBEDDINGS_BACKEND=vertex`                   |
-| Postgres memory   | `CLEARPORT_VECTOR_BACKEND=pg` + Cloud SQL connection    |
-| EasyPost (test)   | `EASYPOST_API_KEY` (test key)                           |
+## 2. Configure GitHub (Settings → Secrets and variables → Actions)
 
-## 3. Deploy the dashboard
+**Variables**
+
+| Name                  | Example                                              |
+| --------------------- | ---------------------------------------------------- |
+| `GCP_PROJECT_ID`      | `my-proj`                                             |
+| `GCP_REGION`          | `us-central1`                                         |
+| `GCP_ZONE`            | `us-central1-a`                                       |
+| `GCE_INSTANCE`        | `clearport-vm`                                        |
+| `AR_REPO`             | `clearport`                                           |
+| `STATIC_IP`           | `34.x.x.x` (printed by the setup script)             |
+| `WIF_SERVICE_ACCOUNT` | `clearport-deployer@my-proj.iam.gserviceaccount.com` |
+
+**Secrets**
+
+| Name               | Value                                                  |
+| ------------------ | ------------------------------------------------------ |
+| `WIF_PROVIDER`     | `projects/NNN/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+| `GOOGLE_API_KEY`   | Gemini AI Studio key (the live brain)                  |
+| `EASYPOST_API_KEY` | *(optional)* EasyPost **test** key (`EZTK…`)           |
+| `POSTGRES_PASSWORD`| *(optional)* DB password; defaults to `clearport`      |
+
+## 3. Deploy
+
+Push to `main`. The pipeline runs:
+
+1. **`ci`** — lint + unit tests (`.github/workflows/ci.yml`).
+2. **`deploy`** — only after CI passes (`.github/workflows/deploy.yml`):
+   builds both images, pushes them to Artifact Registry, copies
+   `docker-compose.prod.yml` to the VM, writes `.env` from the secrets, then
+   `docker compose pull && up -d` over an IAP SSH tunnel.
+
+You can also trigger it manually from the **Actions** tab (`workflow_dispatch`).
+
+After the first deploy:
+
+| Surface   | URL                              |
+| --------- | -------------------------------- |
+| Dashboard | `http://<STATIC_IP>:3000`        |
+| Backend   | `http://<STATIC_IP>:8080/health` |
+| Phoenix   | `http://<STATIC_IP>:6006`        |
+
+## Cost (within the $300 free credits)
+
+A single `e2-medium` (2 vCPU / 4 GB) + 30 GB disk + static IP runs **~$25/mo**,
+so the credits comfortably cover ~10–12 months. To pause billing, stop the VM:
 
 ```bash
-PROJECT_ID=my-proj REGION=us-central1 \
-NEXT_PUBLIC_API_BASE=https://clearport-api-xxxx.run.app \
-NEXT_PUBLIC_PHOENIX_BASE=https://app.phoenix.arize.com \
-./deploy_dashboard.sh
+gcloud compute instances stop clearport-vm --zone us-central1-a
 ```
 
-## 4. Publish the Agent Builder app
+## Notes
 
-Deploy the ADK agent (`clearport/agents/adk_app.py:root_agent`) to Vertex AI
-Agent Builder, then set `NEXT_PUBLIC_AGENT_BUILDER_URL` on the dashboard service
-so the header deep-links to it.
-
-## 5. (Optional) Cloud SQL + pgvector
-
-Provision Cloud SQL for PostgreSQL, run `../cloudsql/001_init.sql`, then set
-`CLEARPORT_VECTOR_BACKEND=pg` and the connection settings. The in-memory store
-is the default and needs nothing.
+- The backend boots with deterministic offline fallbacks, so it stays up even
+  before `GOOGLE_API_KEY` is set — add the key and re-run the workflow to use
+  the live Gemini brain.
+- `NEXT_PUBLIC_API_BASE` / `NEXT_PUBLIC_PHOENIX_BASE` are baked into the
+  dashboard image at build time from `STATIC_IP`, which is why a reserved
+  (non-ephemeral) IP is used.
+- HTTP-only on raw ports is fine for the demo. For HTTPS + clean URLs later, put
+  a reverse proxy (e.g. Caddy) in front and point a domain at the static IP.
+- The legacy Cloud Run scripts (`deploy_backend.sh`, `deploy_dashboard.sh`)
+  remain in this folder as an alternative path; the VM flow above is the
+  supported default.

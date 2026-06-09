@@ -1,0 +1,123 @@
+name: deploy
+
+# Runs after the `ci` workflow succeeds on main, then builds the images and
+# rolls out the four-container stack on the GCE VM (see infra/deploy/setup_gcp.sh).
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write   # required for Workload Identity Federation
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Only deploy when CI passed (workflow_dispatch has no workflow_run payload).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      ZONE: ${{ vars.GCP_ZONE }}
+      INSTANCE: ${{ vars.GCE_INSTANCE }}
+      AR_REPO: ${{ vars.AR_REPO }}
+      STATIC_IP: ${{ vars.STATIC_IP }}
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve image refs
+        id: img
+        run: |
+          REG="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}"
+          SHA="${GITHUB_SHA::12}"
+          echo "backend=${REG}/clearport-api"      >> "$GITHUB_OUTPUT"
+          echo "dashboard=${REG}/clearport-dashboard" >> "$GITHUB_OUTPUT"
+          echo "registry=${REGION}-docker.pkg.dev"  >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}"                          >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ steps.img.outputs.registry }}" --quiet
+
+      - name: Build & push backend image
+        run: |
+          docker build \
+            -t "${{ steps.img.outputs.backend }}:${{ steps.img.outputs.sha }}" \
+            -t "${{ steps.img.outputs.backend }}:latest" \
+            -f Dockerfile .
+          docker push "${{ steps.img.outputs.backend }}:${{ steps.img.outputs.sha }}"
+          docker push "${{ steps.img.outputs.backend }}:latest"
+
+      - name: Build & push dashboard image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_BASE="http://${STATIC_IP}:8080" \
+            --build-arg NEXT_PUBLIC_PHOENIX_BASE="http://${STATIC_IP}:6006" \
+            -t "${{ steps.img.outputs.dashboard }}:${{ steps.img.outputs.sha }}" \
+            -t "${{ steps.img.outputs.dashboard }}:latest" \
+            -f dashboard/Dockerfile dashboard
+          docker push "${{ steps.img.outputs.dashboard }}:${{ steps.img.outputs.sha }}"
+          docker push "${{ steps.img.outputs.dashboard }}:latest"
+
+      - name: Copy compose files to the VM
+        run: |
+          gcloud compute ssh "${INSTANCE}" --zone "${ZONE}" --tunnel-through-iap \
+            --command "mkdir -p ~/clearport/infra/cloudsql"
+          gcloud compute scp --zone "${ZONE}" --tunnel-through-iap \
+            docker-compose.prod.yml "${INSTANCE}:~/clearport/docker-compose.prod.yml"
+          gcloud compute scp --zone "${ZONE}" --tunnel-through-iap \
+            infra/cloudsql/001_init.sql "${INSTANCE}:~/clearport/infra/cloudsql/001_init.sql"
+
+      - name: Write .env on the VM
+        run: |
+          gcloud compute ssh "${INSTANCE}" --zone "${ZONE}" --tunnel-through-iap \
+            --command "cat > ~/clearport/.env" <<'EOF'
+          BACKEND_IMAGE=${{ steps.img.outputs.backend }}:${{ steps.img.outputs.sha }}
+          DASHBOARD_IMAGE=${{ steps.img.outputs.dashboard }}:${{ steps.img.outputs.sha }}
+          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+          EASYPOST_API_KEY=${{ secrets.EASYPOST_API_KEY }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          CLEARPORT_GEMINI_MODEL=gemini-3-pro
+          CLEARPORT_JUDGE_MODEL=gemini-3-pro
+          EOF
+
+      - name: Pull images & roll out on the VM
+        run: |
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          gcloud compute ssh "${INSTANCE}" --zone "${ZONE}" --tunnel-through-iap \
+            --command "set -e; \
+              echo '${ACCESS_TOKEN}' | sudo docker login -u oauth2accesstoken --password-stdin https://${{ steps.img.outputs.registry }}; \
+              cd ~/clearport; \
+              sudo docker compose --env-file .env -f docker-compose.prod.yml pull; \
+              sudo docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans; \
+              sudo docker image prune -f"
+
+      - name: Deployment summary
+        run: |
+          echo "### ClearPort deployed :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Surface | URL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dashboard | http://${STATIC_IP}:3000 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Backend   | http://${STATIC_IP}:8080/health |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Phoenix   | http://${STATIC_IP}:6006 |" >> "$GITHUB_STEP_SUMMARY"

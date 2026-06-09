@@ -65,6 +65,7 @@ export function eventLabel(type: string): string {
     run_created: "Recovery loop ran",
     run_approved: "Escalation approved",
     run_rejected: "Escalation rejected",
+    run_corrected: "Human correction applied",
     metrics: "Metrics updated",
     law_veto: "Law veto applied",
     lesson_promoted: "Lesson promoted",

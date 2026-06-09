@@ -33,7 +33,8 @@ function detail(evt: ClearEvent): string {
       return `${d.memory_key ?? ""} · pass-rate ${d.pass_rate ?? "?"} < floor ${d.floor ?? "?"}`;
     case "run_approved":
     case "run_rejected":
-      return `${d.run_id ?? ""}`;
+    case "run_corrected":
+      return `${d.seed_id ?? d.run_id ?? ""} · ${String(d.status ?? "")}`;
     case "metrics":
       return `${d.pct_auto_resolved ?? 0}% auto · ${d.resolved ?? 0} resolved`;
     case "demo_beat":

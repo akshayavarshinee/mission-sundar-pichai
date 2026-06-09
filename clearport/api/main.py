@@ -6,6 +6,7 @@ Run locally:  ``uv run clearport-api``  (defaults to http://localhost:8080)
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -21,7 +22,26 @@ from clearport.seeds.shipments import all_seeds
 
 logger = structlog.get_logger(__name__)
 
-app = FastAPI(title="ClearPort", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Initialize Arize Phoenix tracing once at startup (best-effort).
+
+    Tracing is otherwise initialized lazily on first use and silently degrades
+    to a no-op when Phoenix is unreachable. Doing it here surfaces a clear log
+    line (``tracing.initialized`` or ``tracing.unavailable_null``) so it's
+    obvious whether spans are being exported to Phoenix.
+    """
+    try:
+        from clearport.arize.tracing import init_tracing
+
+        init_tracing()
+    except Exception as exc:  # noqa: BLE001 — tracing must never block the API
+        logger.warning("tracing.startup_skipped", error=str(exc))
+    yield
+
+
+app = FastAPI(title="ClearPort", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
