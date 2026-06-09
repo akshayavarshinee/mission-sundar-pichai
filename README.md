@@ -2,7 +2,7 @@
 # ClearPort
 
 > **The autonomous customs-recovery layer with an evaluation conscience.**
-> Built with **Gemini 3** + **Google Cloud Agent Builder**, with **Arize Phoenix** (via MCP) as the trust layer that must approve every fix before any real-money action.
+> Built with **Gemini 2.5** + **Google Cloud Agent Builder**, with **Arize Phoenix** (via MCP) as the trust layer that must approve every fix before any real-money action.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Built with Gemini](https://img.shields.io/badge/Built%20with-Gemini%203-4285F4.svg)](#)
