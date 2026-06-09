@@ -37,7 +37,7 @@ It runs as a background pipeline of four agents:
 3. **Document Patch Engine** — rewrites the declaration (HS code, EEI, restriction notes, structural fixes).
 4. **Meta-Cognitive Self-Healer** — the **Arize loop**: eval-gate, tiered action, learning, drift detection.
 
-## Why it's novel
+## Why it is novel
 
 The *parts* aren't new — AI HS-classification (Zonos) and customs-doc generation
 (ShipEngine, Avalara) already exist. **The closed loop is**: nobody combines
