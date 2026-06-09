@@ -91,14 +91,16 @@ jobs:
       - name: Write .env on the VM
         run: |
           gcloud compute ssh "${INSTANCE}" --zone "${ZONE}" --tunnel-through-iap \
-            --command "cat > ~/clearport/.env" <<'EOF'
+            --command "cat > ~/clearport/.env" <<EOF
           BACKEND_IMAGE=${{ steps.img.outputs.backend }}:${{ steps.img.outputs.sha }}
           DASHBOARD_IMAGE=${{ steps.img.outputs.dashboard }}:${{ steps.img.outputs.sha }}
-          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_GENAI_USE_VERTEXAI=true
+          GOOGLE_CLOUD_PROJECT=${PROJECT_ID}
+          GOOGLE_CLOUD_LOCATION=${REGION}
           EASYPOST_API_KEY=${{ secrets.EASYPOST_API_KEY }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          CLEARPORT_GEMINI_MODEL=gemini-3-pro
-          CLEARPORT_JUDGE_MODEL=gemini-3-pro
+          CLEARPORT_GEMINI_MODEL=gemini-2.5-pro
+          CLEARPORT_JUDGE_MODEL=gemini-2.5-pro
           EOF
 
       - name: Pull images & roll out on the VM

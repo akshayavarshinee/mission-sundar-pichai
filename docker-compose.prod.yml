@@ -62,11 +62,12 @@ services:
     environment:
       - CLEARPORT_ENV=cloud
       - PORT=8080
-      # ── Gemini brain (AI Studio API key) ──
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - GOOGLE_GENAI_USE_VERTEXAI=false
-      - CLEARPORT_GEMINI_MODEL=${CLEARPORT_GEMINI_MODEL:-gemini-3-pro}
-      - CLEARPORT_JUDGE_MODEL=${CLEARPORT_JUDGE_MODEL:-gemini-3-pro}
+      # ── Gemini brain (Vertex AI via the VM's attached service account) ──
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
+      - CLEARPORT_GEMINI_MODEL=${CLEARPORT_GEMINI_MODEL:-gemini-2.5-pro}
+      - CLEARPORT_JUDGE_MODEL=${CLEARPORT_JUDGE_MODEL:-gemini-2.5-pro}
       # ── Self-hosted Phoenix on the same VM ──
       - PHOENIX_HOST=http://phoenix:6006
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
