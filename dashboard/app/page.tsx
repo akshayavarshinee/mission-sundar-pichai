@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Inbox, ShieldCheck } from "lucide-react";
 import {
   api,
   API_BASE,
-  phoenixTraceUrl,
   type Health,
   type Metrics,
   type RunSummary,
   type Seed,
 } from "@/lib/api";
 import { useEvents, type ClearEvent } from "@/lib/useEvents";
+import Topbar from "@/components/Topbar";
 import MetricsBar from "@/components/MetricsBar";
 import SeedControls from "@/components/SeedControls";
 import TraceTimeline from "@/components/TraceTimeline";
@@ -195,99 +196,88 @@ export default function Page() {
   const recentRuns = useMemo(() => runs.slice(0, 6), [runs]);
 
   return (
-    <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-      <header className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            ClearPort{" "}
-            <span className="text-sm font-normal text-slate-400">
-              customs-recovery agent
-            </span>
-          </h1>
-          <p className="text-sm text-slate-400">
-            Autonomous rejection recovery · Arize eval-gate · human approvals ·
-            experiment-gated learning · drift detection
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
-              health
-                ? "border-good/40 text-good"
-                : "border-bad/40 text-bad"
-            }`}
-            title={health ? `backend env: ${health.env}` : "backend unreachable"}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${health ? "bg-good" : "bg-bad"}`}
-            />
-            {health ? `backend: ${health.env}` : "backend down"}
-          </span>
-          <a className="btn" href={phoenixTraceUrl()} target="_blank" rel="noreferrer">
-            Phoenix traces ↗
-          </a>
-          <a className="btn" href={AGENT_BUILDER_URL} target="_blank" rel="noreferrer">
-            Agent Builder app ↗
-          </a>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col">
+      <Topbar health={health} agentBuilderUrl={AGENT_BUILDER_URL} connected={connected} />
 
-      {error ? (
-        <div className="card border-bad/40 bg-bad/5 p-3 text-sm text-bad">
-          Backend error: {error}. Is the API running at{" "}
-          <span className="font-mono">{API_BASE}</span>?
-        </div>
-      ) : null}
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 md:p-6">
+          {error ? (
+            <div className="card flex items-start gap-2.5 border-bad/40 bg-bad/5 p-3 text-sm text-bad">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Backend error: {error}. Is the API running at{" "}
+                <span className="font-mono">{API_BASE}</span>?
+              </span>
+            </div>
+          ) : null}
 
-      <DriftBanner
-        alert={driftAlert}
-        healed={driftHealed}
-        onDismiss={() => setDriftAlert(null)}
-      />
-
-      <MetricsBar metrics={metrics} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <SeedControls
-            seeds={seeds}
-            busy={busy}
-            onRecover={onRecover}
-            onLearn={onLearn}
-            onDrift={onDrift}
-            onPlayDemo={onPlayDemo}
-            onReset={onReset}
+          <DriftBanner
+            alert={driftAlert}
+            healed={driftHealed}
+            onDismiss={() => setDriftAlert(null)}
           />
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-slate-200">
-              Recovery verdicts
+
+          <section id="overview" className="scroll-mt-20 space-y-3">
+            <h2 className="section-title">
+              <ShieldCheck className="h-4 w-4 text-accent" />
+              Operational overview
             </h2>
-            {recentRuns.length === 0 ? (
-              <div className="card p-6 text-center text-sm text-slate-500">
-                No runs yet — fire a seed to see the eval-gate in action.
-              </div>
-            ) : (
-              recentRuns.map((run) => (
-                <EvalVerdictCard key={run.run_id} run={run} />
-              ))
-            )}
+            <MetricsBar metrics={metrics} />
+          </section>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
+              <section id="controls" className="scroll-mt-20">
+                <SeedControls
+                  seeds={seeds}
+                  busy={busy}
+                  onRecover={onRecover}
+                  onLearn={onLearn}
+                  onDrift={onDrift}
+                  onPlayDemo={onPlayDemo}
+                  onReset={onReset}
+                />
+              </section>
+
+              <section id="verdicts" className="scroll-mt-20 space-y-3">
+                <h2 className="section-title">
+                  <ShieldCheck className="h-4 w-4 text-accent" />
+                  Recovery verdicts
+                </h2>
+                {recentRuns.length === 0 ? (
+                  <div className="card flex flex-col items-center gap-2 p-8 text-center">
+                    <Inbox className="h-6 w-6 text-faint" />
+                    <p className="text-sm text-muted">
+                      No runs yet — fire a seed to see the eval-gate in action.
+                    </p>
+                  </div>
+                ) : (
+                  recentRuns.map((run) => (
+                    <EvalVerdictCard key={run.run_id} run={run} />
+                  ))
+                )}
+              </section>
+            </div>
+
+            <div className="space-y-6">
+              <section id="timeline" className="scroll-mt-20">
+                <TraceTimeline events={events} connected={connected} />
+              </section>
+              <section id="approvals" className="scroll-mt-20">
+                <ApprovalQueue
+                  approvals={approvals}
+                  busy={busy}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                />
+              </section>
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-4">
-          <TraceTimeline events={events} connected={connected} />
-          <ApprovalQueue
-            approvals={approvals}
-            busy={busy}
-            onApprove={onApprove}
-            onReject={onReject}
-          />
-        </div>
-      </div>
-
-      <footer className="pt-2 text-center text-xs text-slate-600">
-        ClearPort · Gemini 3 + Google ADK + Arize Phoenix (MCP) · EasyPost test mode
-      </footer>
-    </main>
+          <footer className="border-t border-edge pt-4 text-center text-xs text-faint">
+            ClearPort · Gemini 3 + Google ADK + Arize Phoenix (MCP) · EasyPost
+            test mode
+          </footer>
+        </main>
+    </div>
   );
 }

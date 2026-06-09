@@ -1,6 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import {
+  GraduationCap,
+  Play,
+  RotateCcw,
+  SlidersHorizontal,
+  Waves,
+  Zap,
+} from "lucide-react";
 import type { Seed } from "@/lib/api";
 import { fmtUsd } from "@/lib/format";
 
@@ -30,7 +38,10 @@ export default function SeedControls({
   return (
     <div className="card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-200">Demo controls</h2>
+        <h2 className="section-title">
+          <SlidersHorizontal className="h-4 w-4 text-accent" />
+          Demo controls
+        </h2>
         <div className="flex flex-wrap gap-2">
           <button
             className="btn btn-accent"
@@ -38,7 +49,8 @@ export default function SeedControls({
             onClick={onPlayDemo}
             title="Run the full storyboard hands-free (ideal for recording)"
           >
-            {busy === "play" ? "Playing…" : "▶ Play full demo"}
+            <Play className="h-4 w-4" />
+            {busy === "play" ? "Playing…" : "Play full demo"}
           </button>
           <button
             className="btn"
@@ -46,19 +58,21 @@ export default function SeedControls({
             onClick={onReset}
             title="Clear all runs, approvals, and memory for a fresh demo"
           >
+            <RotateCcw className="h-4 w-4" />
             {busy === "reset" ? "Resetting…" : "Reset"}
           </button>
         </div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-500">Manual steps:</span>
+        <span className="text-xs text-muted">Manual steps:</span>
         <button
           className="btn"
           disabled={busy !== null}
           onClick={onLearn}
-          title="Run experiment-gated promotion (episodic ② → distilled ③)"
+          title="Run experiment-gated promotion (episodic to distilled lessons)"
         >
+          <GraduationCap className="h-4 w-4" />
           {busy === "learn" ? "Learning…" : "Run learning"}
         </button>
         <button
@@ -67,6 +81,7 @@ export default function SeedControls({
           onClick={() => onDrift("C0")}
           title="Simulate a silent destination rule change, then auto-heal"
         >
+          <Waves className="h-4 w-4" />
           {busy === "drift" ? "Detecting…" : "Trigger drift"}
         </button>
       </div>
@@ -81,8 +96,8 @@ export default function SeedControls({
               className={`group flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition
                 ${
                   isWild
-                    ? "border-veto/50 bg-veto/5 hover:border-veto"
-                    : "border-edge bg-panel2 hover:border-accent"
+                    ? "border-veto/40 bg-veto/5 hover:border-veto"
+                    : "border-edge bg-panel2 hover:border-accent/60"
                 }
                 disabled:cursor-not-allowed disabled:opacity-40`}
               disabled={busy !== null}
@@ -91,13 +106,13 @@ export default function SeedControls({
               onMouseLeave={() => setHover(null)}
             >
               <div className="flex w-full items-center justify-between">
-                <span className="font-mono text-sm font-semibold text-white">
+                <span className="flex items-center gap-1 font-mono text-sm font-semibold text-ink">
                   {s.id}
-                  {isWild ? " ⚡" : ""}
+                  {isWild ? <Zap className="h-3.5 w-3.5 text-veto" /> : null}
                 </span>
-                <span className="text-xs text-slate-400">{fmtUsd(s.value)}</span>
+                <span className="text-xs text-muted">{fmtUsd(s.value)}</span>
               </div>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-muted">
                 {busy === s.id
                   ? "Running…"
                   : s.expected_error
@@ -107,7 +122,7 @@ export default function SeedControls({
                       : "—"}
               </span>
               {hover === s.id && s.note ? (
-                <span className="text-[11px] leading-tight text-slate-500">
+                <span className="text-[11px] leading-tight text-faint">
                   {s.note}
                 </span>
               ) : null}

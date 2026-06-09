@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckCircle2, TriangleAlert, X } from "lucide-react";
 import type { ClearEvent } from "@/lib/useEvents";
 
 // A dismissible banner that lights up when the most recent drift_alert fires,
@@ -18,19 +19,23 @@ export default function DriftBanner({
 
   return (
     <div
-      className={`card flex items-center justify-between gap-4 border-l-4 p-4 ${
+      className={`card flex animate-fadeIn items-center justify-between gap-4 border-l-4 p-4 ${
         healed ? "border-l-good bg-good/5" : "border-l-bad bg-bad/5"
       }`}
     >
       <div className="flex items-center gap-3">
-        <span className="text-2xl">{healed ? "✅" : "⚠️"}</span>
+        {healed ? (
+          <CheckCircle2 className="h-7 w-7 shrink-0 text-good" />
+        ) : (
+          <TriangleAlert className="h-7 w-7 shrink-0 text-bad" />
+        )}
         <div>
-          <div className="text-sm font-semibold text-slate-100">
+          <div className="text-sm font-semibold text-ink">
             {healed
               ? "Drift auto-healed"
               : "Destination rule changed — drift detected"}
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-muted">
             {String(d.rule ?? "Silent schema change")} · pass-rate{" "}
             <span className="text-bad">{String(d.pass_rate ?? "?")}</span> &lt; floor{" "}
             {String(d.floor ?? "?")}
@@ -40,8 +45,8 @@ export default function DriftBanner({
           </div>
         </div>
       </div>
-      <button className="btn" onClick={onDismiss}>
-        Dismiss
+      <button className="btn h-9 w-9 p-0" onClick={onDismiss} aria-label="Dismiss">
+        <X className="h-4 w-4" />
       </button>
     </div>
   );

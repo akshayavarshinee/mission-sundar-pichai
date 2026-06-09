@@ -1,5 +1,6 @@
 "use client";
 
+import { Activity, ExternalLink } from "lucide-react";
 import type { ClearEvent } from "@/lib/useEvents";
 import { phoenixTraceUrl } from "@/lib/api";
 import { eventLabel, fmtTime, decisionTone } from "@/lib/format";
@@ -58,17 +59,21 @@ export default function TraceTimeline({
   return (
     <div className="card flex h-full min-h-[24rem] flex-col p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Live trace timeline</h2>
+        <h2 className="section-title">
+          <Activity className="h-4 w-4 text-accent" />
+          Live trace timeline
+        </h2>
         <div className="flex items-center gap-3">
           <a
             href={phoenixTraceUrl()}
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-accent hover:underline"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
           >
-            Open in Phoenix ↗
+            Open in Phoenix
+            <ExternalLink className="h-3 w-3" />
           </a>
-          <span className="flex items-center gap-1.5 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5 text-xs text-muted">
             <span
               className={`h-2 w-2 rounded-full ${
                 connected ? "bg-good" : "bg-bad"
@@ -81,14 +86,14 @@ export default function TraceTimeline({
 
       <ol className="flex-1 space-y-0 overflow-y-auto pr-1">
         {events.length === 0 ? (
-          <li className="py-8 text-center text-sm text-slate-500">
+          <li className="py-8 text-center text-sm text-muted">
             Trigger a shipment to watch the recovery loop stream live.
           </li>
         ) : (
           events.map((evt, i) => (
             <li
               key={`${evt.ts}-${i}`}
-              className={`flex items-start gap-3 border-b border-edge/50 py-2 ${
+              className={`flex items-start gap-3 border-b border-edge/60 py-2 ${
                 i === 0 ? "animate-pulseRow" : ""
               }`}
             >
@@ -99,10 +104,10 @@ export default function TraceTimeline({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm font-medium text-slate-200">
+                  <span className="text-sm font-medium text-body">
                     {eventLabel(evt.type)}
                   </span>
-                  <span className="shrink-0 font-mono text-[11px] text-slate-500">
+                  <span className="shrink-0 font-mono text-[11px] text-faint">
                     {fmtTime(evt.ts)}
                   </span>
                 </div>

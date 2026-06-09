@@ -1,5 +1,6 @@
 "use client";
 
+import { DollarSign, Gauge, Timer, Zap } from "lucide-react";
 import type { Metrics } from "@/lib/api";
 import { fmtUsd, fmtSeconds, fmtDays } from "@/lib/format";
 
@@ -7,18 +8,25 @@ function Counter({
   label,
   value,
   sub,
-  tone = "text-white",
+  tone = "text-ink",
+  icon: Icon,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: string;
+  icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
     <div className="card flex flex-col gap-1 p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted">
+          {label}
+        </div>
+        <Icon className={`h-4 w-4 ${tone}`} />
+      </div>
       <div className={`text-2xl font-semibold tabular-nums ${tone}`}>{value}</div>
-      {sub ? <div className="text-xs text-slate-500">{sub}</div> : null}
+      {sub ? <div className="text-xs text-faint">{sub}</div> : null}
     </div>
   );
 }
@@ -42,27 +50,31 @@ export default function MetricsBar({ metrics }: { metrics: Metrics | null }) {
           value={fmtSeconds(metrics.avg_recovery_seconds)}
           sub={`vs broker baseline ${fmtDays(metrics.broker_baseline_seconds)}`}
           tone="text-accent"
+          icon={Timer}
         />
         <Counter
           label="Demurrage saved"
           value={fmtUsd(metrics.total_demurrage_saved_usd)}
           sub={`${metrics.resolved} shipments resolved`}
           tone="text-good"
+          icon={DollarSign}
         />
         <Counter
           label="Auto-resolved"
           value={`${metrics.pct_auto_resolved.toFixed(0)}%`}
           sub={`${metrics.auto_resolved}/${metrics.runs_total} · ${metrics.escalated} safe-escalations`}
-          tone="text-white"
+          tone="text-ink"
+          icon={Gauge}
         />
         <Counter
           label="Self-heal speed-up"
           value={`${metrics.self_heal_speedup.toFixed(1)}×`}
           sub="repeat-error latency before/after learning"
           tone="text-veto"
+          icon={Zap}
         />
       </div>
-      <p className="text-[11px] text-slate-500">{metrics.assumptions}</p>
+      <p className="text-[11px] text-faint">{metrics.assumptions}</p>
     </div>
   );
 }

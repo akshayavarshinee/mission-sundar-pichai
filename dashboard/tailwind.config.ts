@@ -1,6 +1,13 @@
 import type { Config } from "tailwindcss";
 
+// Colours are driven by CSS variables (see app/globals.css) so the same class
+// names resolve to the right value in both light and dark themes. Each token is
+// stored as an `R G B` triplet and consumed via the `<alpha-value>` placeholder
+// so Tailwind's `/<alpha>` opacity modifier works everywhere.
+const rgb = (variable: string) => `rgb(var(${variable}) / <alpha-value>)`;
+
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -9,27 +16,45 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#0a0e1a",
-        panel: "#111827",
-        panel2: "#0f1626",
-        edge: "#1f2a3d",
-        accent: "#38bdf8",
-        good: "#34d399",
-        warn: "#fbbf24",
-        bad: "#f87171",
-        veto: "#a78bfa",
+        // Surfaces
+        bg: rgb("--c-bg"),
+        panel: rgb("--c-panel"),
+        panel2: rgb("--c-panel-2"),
+        edge: rgb("--c-edge"),
+        // Text
+        ink: rgb("--c-ink"),
+        body: rgb("--c-body"),
+        muted: rgb("--c-muted"),
+        faint: rgb("--c-faint"),
+        // Semantic accents
+        accent: rgb("--c-accent"),
+        good: rgb("--c-good"),
+        warn: rgb("--c-warn"),
+        bad: rgb("--c-bad"),
+        veto: rgb("--c-veto"),
       },
       fontFamily: {
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
+      },
+      boxShadow: {
+        card: "0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)",
+        "card-dark":
+          "0 1px 0 0 rgb(255 255 255 / 0.02) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6)",
       },
       keyframes: {
         pulseRow: {
-          "0%": { backgroundColor: "rgba(56,189,248,0.18)" },
+          "0%": { backgroundColor: "rgb(var(--c-accent) / 0.16)" },
           "100%": { backgroundColor: "transparent" },
+        },
+        fadeIn: {
+          "0%": { opacity: "0", transform: "translateY(4px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
       },
       animation: {
         pulseRow: "pulseRow 1.4s ease-out",
+        fadeIn: "fadeIn 0.25s ease-out",
       },
     },
   },
