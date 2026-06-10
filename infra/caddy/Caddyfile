@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────────────────────
+# ClearPort — single HTTPS front door.
+#
+# Serves the whole app from ONE public origin (https://<SITE_HOST>) so the
+# browser only ever talks to port 443:
+#   • clean URL instead of a raw IP:port,
+#   • a real Let's Encrypt certificate fetched automatically,
+#   • no mixed-content and no CORS (dashboard + API are same-origin),
+#   • works behind restrictive corporate firewalls that block 3000/8080.
+#
+# SITE_HOST is injected by docker compose (written into .env by vm_deploy.sh),
+# e.g. 34-134-197-83.sslip.io — a free wildcard-DNS name that resolves straight
+# back to the VM's public IP, so Caddy can complete the ACME challenge.
+#
+# Routing:
+#   /api/* , /health  → backend:8080    (FastAPI REST + Server-Sent Events)
+#   everything else    → dashboard:3000  (Next.js UI)
+# Phoenix stays on its own raw port (:6006) to avoid disturbing the internal
+# OTLP trace collector path.
+# ──────────────────────────────────────────────────────────────────────────
+{$SITE_HOST} {
+	encode zstd gzip
+
+	# FastAPI REST + SSE + health check.
+	@backend path /api/* /health
+	handle @backend {
+		reverse_proxy backend:8080 {
+			# Stream Server-Sent Events (/api/events) to the browser immediately
+			# instead of buffering the response.
+			flush_interval -1
+		}
+	}
+
+	# Next.js dashboard (default route).
+	handle {
+		reverse_proxy dashboard:3000
+	}
+}

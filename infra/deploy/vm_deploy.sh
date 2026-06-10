@@ -38,6 +38,12 @@ if [[ -z "${IP}" ]]; then
   exit 1
 fi
 
+# Derive a free public hostname from the IP via sslip.io (no domain to buy):
+#   34.134.197.83 → 34-134-197-83.sslip.io  (resolves straight back to the IP).
+# Caddy uses it to fetch a real Let's Encrypt cert and front the whole app on
+# HTTPS/443. Override with SITE_HOST=<your.domain> if you own one.
+SITE_HOST="${SITE_HOST:-$(echo "${IP}" | tr '.' '-').sslip.io}"
+
 # docker may need sudo depending on group membership.
 DOCKER="docker"
 if ! docker info >/dev/null 2>&1; then
@@ -45,6 +51,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "▶ IP             : ${IP}"
+echo "▶ Public URL     : https://${SITE_HOST}"
 echo "▶ Project / Loc  : ${GOOGLE_CLOUD_PROJECT} / ${GOOGLE_CLOUD_LOCATION}"
 echo "▶ Source dir     : ${SRC_DIR}"
 echo
@@ -77,9 +84,9 @@ ${DOCKER} rm -f clearport-api clearport-dashboard clearport-phoenix clearport-db
 echo "▶ Building backend image (clearport-api:local)…"
 ${DOCKER} build -t clearport-api:local -f Dockerfile .
 
-echo "▶ Building dashboard image (clearport-dashboard:local) with API base http://${IP}:8080…"
+echo "▶ Building dashboard image (clearport-dashboard:local) with API base https://${SITE_HOST}…"
 ${DOCKER} build \
-  --build-arg NEXT_PUBLIC_API_BASE="http://${IP}:8080" \
+  --build-arg NEXT_PUBLIC_API_BASE="https://${SITE_HOST}" \
   --build-arg NEXT_PUBLIC_PHOENIX_BASE="http://${IP}:6006" \
   -t clearport-dashboard:local \
   -f dashboard/Dockerfile dashboard
@@ -89,6 +96,7 @@ echo "▶ Writing .env…"
 cat > .env <<EOF
 BACKEND_IMAGE=clearport-api:local
 DASHBOARD_IMAGE=clearport-dashboard:local
+SITE_HOST=${SITE_HOST}
 GOOGLE_GENAI_USE_VERTEXAI=true
 GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
 GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
@@ -119,20 +127,23 @@ for _ in $(seq 1 20); do
 done
 
 echo "▶ Verifying the dashboard baked in the correct API base…"
-if ${DOCKER} exec clearport-dashboard sh -c "grep -ro '${IP}:8080' .next | head -1" >/dev/null 2>&1; then
-  echo "  ✓ dashboard points at http://${IP}:8080"
+if ${DOCKER} exec clearport-dashboard sh -c "grep -ro '${SITE_HOST}' .next | head -1" >/dev/null 2>&1; then
+  echo "  ✓ dashboard points at https://${SITE_HOST}"
 else
-  echo "  ⚠ could not confirm baked IP — hard-refresh the browser (Ctrl+Shift+R) and check the Network tab"
+  echo "  ⚠ could not confirm baked host — hard-refresh the browser (Ctrl+Shift+R) and check the Network tab"
 fi
 
 cat <<DONE
 
 ✅ Done.
-   Dashboard : http://${IP}:3000
-   Backend   : http://${IP}:8080/health
-   Phoenix   : http://${IP}:6006
+   Public URL : https://${SITE_HOST}          (HTTPS/443 — works behind firewalls)
+   Backend    : https://${SITE_HOST}/health
+   Phoenix    : http://${IP}:6006             (raw port; open from an unrestricted network)
+   Raw ports  : http://${IP}:3000 (UI)  ·  http://${IP}:8080/health (API)
 
-If the dashboard still says "backend down", hard-refresh (Ctrl+Shift+R) to drop
-the old cached JS bundle. If logs show a credentials error, the VM service
-account still needs the role: roles/aiplatform.user.
+The first request to a brand-new host triggers a Let's Encrypt cert fetch (a few
+seconds — needs GCP firewall tcp:80 + tcp:443 open). If the dashboard still says
+"backend down", hard-refresh (Ctrl+Shift+R) to drop the old cached JS bundle. If
+logs show a credentials error, the VM service account still needs the role:
+roles/aiplatform.user.
 DONE

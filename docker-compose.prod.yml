@@ -97,6 +97,31 @@ services:
       - NODE_ENV=production
       - PORT=3000
 
+  # ── HTTPS front door ──────────────────────────────────────────────────
+  # One public origin (https://${SITE_HOST}) for the whole app so the browser
+  # only ever talks to port 443: clean URL, automatic Let's Encrypt cert, no
+  # mixed-content, no CORS, and it sails through restrictive corporate
+  # firewalls that block the raw 3000/8080 ports. Routing lives in
+  # ./infra/caddy/Caddyfile  (/api/* + /health → backend, else → dashboard).
+  caddy:
+    image: caddy:2-alpine
+    container_name: clearport-caddy
+    restart: unless-stopped
+    depends_on:
+      - dashboard
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_HOST=${SITE_HOST}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   phoenix_data:
   pgdata:
+  caddy_data:
+  caddy_config:
