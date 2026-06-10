@@ -13,40 +13,34 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- gemini-embedding-001 dimensionality (3072). Adjust if the embed model changes.
 -- ── ① STATIC LAW : HTS / CROSS / EEI curated slices ───────────────────────
+-- Generic vector-store layout matching clearport.memory.vector_store.
+-- PgVectorStore: (id, content, embedding, metadata). All domain fields
+-- (source, citation, hs_chapter, …) ride inside the JSONB metadata so the same
+-- code path serves the in-memory and pgvector backends identically.
 CREATE TABLE IF NOT EXISTS law_chunks (
-    id            BIGSERIAL PRIMARY KEY,
-    source        TEXT NOT NULL,          -- 'HTS' | 'CROSS' | 'EEI'
-    citation      TEXT NOT NULL,          -- e.g. 'HTS 9404.90' or 'CROSS N123456'
-    hs_chapter    TEXT,                   -- two-digit chapter when applicable
+    id            TEXT PRIMARY KEY,
     content       TEXT NOT NULL,
     embedding     vector(3072),
+    metadata      JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- NOTE: pgvector HNSW/IVFFlat indexes support at most 2000 dimensions, but
 -- gemini-embedding-001 is 3072-d, so we cannot build an ANN index on the raw
 -- vector column. The curated demo KB is tiny, so an exact (sequential) scan is
 -- fine. (To index later: keep a halfvec(3072) copy and build hnsw on that.)
-CREATE INDEX IF NOT EXISTS law_chunks_chapter_idx ON law_chunks (hs_chapter);
 
 -- ── ③ DISTILLED LESSONS : always-on semantic memory (law has veto) ────────
+-- Same generic layout as law_chunks. The full DistilledLesson (lane,
+-- hs_chapter, error_type, pattern, recommended_fix, pass_rate, …) is stored
+-- under metadata->'lesson', with error_type/lane/hs_chapter mirrored at the top
+-- level of metadata for fast equality filtering during recall.
 CREATE TABLE IF NOT EXISTS distilled_lessons (
-    id              BIGSERIAL PRIMARY KEY,
-    lane            TEXT NOT NULL,        -- 'IN->US' etc.
-    hs_chapter      TEXT,
-    error_type      TEXT NOT NULL,        -- normalized_error_type
-    pattern         TEXT NOT NULL,
-    recommended_fix TEXT NOT NULL,
-    evidence_count  INT NOT NULL DEFAULT 0,
-    experiment_id   TEXT,                 -- Phoenix experiment that promoted it
-    baseline_score  DOUBLE PRECISION,
-    candidate_score DOUBLE PRECISION,
-    pass_rate       DOUBLE PRECISION,     -- rolling; feeds drift detection
+    id              TEXT PRIMARY KEY,
+    content         TEXT NOT NULL,
     embedding       vector(3072),
-    promoted_at     TIMESTAMPTZ,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS distilled_lessons_key_idx
-    ON distilled_lessons (lane, COALESCE(hs_chapter, ''), error_type);
 -- (See note above — no HNSW index on the 3072-d embedding column.)
 
 -- ── APPLICATION STATE : rejections, proposals, outcomes, approvals ────────
