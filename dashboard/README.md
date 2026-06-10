@@ -46,9 +46,16 @@ Next.js 14 (App Router) · React 18 · TypeScript · Tailwind CSS. No client sta
 library — a single SSE hook (`lib/useEvents.ts`) with auto-reconnect drives the
 live updates; REST calls in `lib/api.ts` mirror the backend contract.
 
-## Deploy (Cloud Run)
+## Deploy
+
+| Target | Guide |
+| ------ | ----- |
+| **Vercel frontend + GCP backend** (recommended) | [`docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md) |
+| Full VM stack (all containers) | [`../infra/deploy`](../infra/deploy) |
+| Legacy Cloud Run | [`../infra/deploy/deploy_dashboard.sh`](../infra/deploy/deploy_dashboard.sh) |
 
 ```bash
-# build + deploy both surfaces (see ../infra/deploy)
-../infra/deploy/deploy_dashboard.sh
+# Vercel (from dashboard/)
+cp .env.vercel.example   # → set in Vercel dashboard
+npx vercel --prod
 ```

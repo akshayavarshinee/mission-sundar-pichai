@@ -1,0 +1,24 @@
+# ──────────────────────────────────────────────────────────────────────────
+# ClearPort — HTTPS API-only front door (Vercel split deployment).
+#
+# Exposes only FastAPI routes on https://${SITE_HOST}:
+#   /api/* , /health  → backend:8080
+#
+# The Next.js dashboard lives on Vercel and proxies here via BACKEND_UPSTREAM.
+# Phoenix stays on raw :6006 (deep links from the Vercel UI).
+# ──────────────────────────────────────────────────────────────────────────
+{$SITE_HOST} {
+	encode zstd gzip
+
+	@backend path /api/* /health
+	handle @backend {
+		reverse_proxy backend:8080 {
+			flush_interval -1
+		}
+	}
+
+	# No dashboard routes — return 404 for everything else.
+	handle {
+		respond "ClearPort API only — open the dashboard on Vercel." 404
+	}
+}

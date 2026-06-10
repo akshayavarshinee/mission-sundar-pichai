@@ -31,6 +31,7 @@ node_modules/
 dashboard/.next/
 dashboard/out/
 dashboard/dist/
+dashboard/.vercel/
 npm-debug.log*
 
 # ── Local data / Phoenix / Postgres volumes ───────────────────────────────

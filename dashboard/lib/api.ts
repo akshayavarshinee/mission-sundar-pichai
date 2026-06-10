@@ -1,8 +1,9 @@
 // Typed REST client for the ClearPort backend. All shapes mirror the FastAPI
 // responses in clearport/api/main.py.
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+import { resolveApiBase } from "./config";
+
+export const API_BASE = resolveApiBase();
 export const PHOENIX_BASE =
   process.env.NEXT_PUBLIC_PHOENIX_BASE ?? "http://localhost:6006";
 

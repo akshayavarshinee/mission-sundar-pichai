@@ -95,6 +95,13 @@ lessons (always-on semantic, **law has veto**) · ④ procedural prompts.
 
 ## Quickstart
 
+| Mode | Command | Docs |
+|------|---------|------|
+| Offline demo | `uv run clearport-demo` | [GUIDE.md](./GUIDE.md) |
+| Local UI | `uv run clearport-api` + `cd dashboard && npm run dev` | [dashboard/README.md](./dashboard/README.md) |
+| **Vercel + GCP split** | Backend on VM, dashboard on Vercel | **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** |
+| Full VM stack | `./infra/deploy/vm_deploy.sh` | [infra/deploy/README.md](./infra/deploy/README.md) |
+
 ClearPort runs **fully offline by default** — every external dependency
 (EasyPost, Phoenix MCP, Vertex embeddings, Gemini, Postgres) has a deterministic
 fallback, so you can run the entire recovery loop **with no keys and no Docker**.
