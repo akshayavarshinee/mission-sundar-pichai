@@ -22,8 +22,10 @@ CREATE TABLE IF NOT EXISTS law_chunks (
     embedding     vector(3072),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS law_chunks_embedding_idx
-    ON law_chunks USING hnsw (embedding vector_cosine_ops);
+-- NOTE: pgvector HNSW/IVFFlat indexes support at most 2000 dimensions, but
+-- gemini-embedding-001 is 3072-d, so we cannot build an ANN index on the raw
+-- vector column. The curated demo KB is tiny, so an exact (sequential) scan is
+-- fine. (To index later: keep a halfvec(3072) copy and build hnsw on that.)
 CREATE INDEX IF NOT EXISTS law_chunks_chapter_idx ON law_chunks (hs_chapter);
 
 -- ── ③ DISTILLED LESSONS : always-on semantic memory (law has veto) ────────
@@ -45,8 +47,7 @@ CREATE TABLE IF NOT EXISTS distilled_lessons (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS distilled_lessons_key_idx
     ON distilled_lessons (lane, COALESCE(hs_chapter, ''), error_type);
-CREATE INDEX IF NOT EXISTS distilled_lessons_embedding_idx
-    ON distilled_lessons USING hnsw (embedding vector_cosine_ops);
+-- (See note above — no HNSW index on the 3072-d embedding column.)
 
 -- ── APPLICATION STATE : rejections, proposals, outcomes, approvals ────────
 CREATE TABLE IF NOT EXISTS rejection_events (

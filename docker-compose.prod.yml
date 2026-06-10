@@ -74,7 +74,10 @@ services:
       - PHOENIX_PROJECT=clearport
       # ── Postgres + pgvector memory ──
       - DATABASE_URL=postgresql+psycopg://clearport:${POSTGRES_PASSWORD:-clearport}@db:5432/clearport
-      - CLEARPORT_VECTOR_BACKEND=pg
+      # The pg vector schema (law_chunks/distilled_lessons) does not yet match the
+      # generic PgVectorStore contract, so memory tiers ① ③ use the deterministic
+      # in-memory store. Gemini (Vertex) and Phoenix tracing remain fully live.
+      - CLEARPORT_VECTOR_BACKEND=memory
       - CLEARPORT_EMBEDDINGS_BACKEND=auto
       # ── EasyPost (optional test key) ──
       - EASYPOST_API_KEY=${EASYPOST_API_KEY:-}
