@@ -1,7 +1,7 @@
 "use client";
 
-import { GraduationCap } from "lucide-react";
-import type { LessonProgressPoint } from "@/lib/api";
+import { ExternalLink, GraduationCap } from "lucide-react";
+import { phoenixExperimentUrl, type LessonProgressPoint } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { errorLabel } from "@/lib/shipment";
 
@@ -46,9 +46,21 @@ export default function LessonTimeline({ lessons }: { lessons: LessonProgressPoi
               <ScoreBar label="candidate" score={l.candidate_score} tone="bg-good" />
             </div>
 
-            <div className="mt-1.5 flex flex-wrap gap-x-4 text-[11px] text-faint">
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-faint">
               <span>{l.evidence_count} observation(s)</span>
               <span className="font-mono">{l.memory_key}</span>
+              {l.experiment_live && l.experiment_id ? (
+                <a
+                  href={phoenixExperimentUrl(l.experiment_dataset_id, l.experiment_id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-accent hover:underline"
+                  title={`Phoenix experiment ${l.experiment_id}`}
+                >
+                  View experiment in Phoenix
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : null}
             </div>
           </li>
         ))}

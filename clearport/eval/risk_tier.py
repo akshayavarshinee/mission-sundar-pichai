@@ -46,6 +46,11 @@ def assess(
         4,
     )
 
+    # Cost of being wrong: the share of declared value exposed by the verdict's
+    # uncertainty. A small parcel can ride a shaky fix; a mid-value one cannot.
+    expected_error_cost = round((1.0 - verdict.confidence) * value, 2)
+    cost_ceiling = settings.clearport_max_auto_error_cost_usd
+
     reasons: list[str] = []
     hard_line_triggered = False
     if value >= hard_line:
@@ -63,6 +68,12 @@ def assess(
     elif total >= settings.clearport_risk_threshold:
         decision = Decision.HUMAN
         reasons.append(f"risk score {total:.2f} >= threshold {settings.clearport_risk_threshold:.2f}")
+    elif expected_error_cost > cost_ceiling:
+        decision = Decision.HUMAN
+        reasons.append(
+            f"expected error cost ${expected_error_cost:.0f} > ${cost_ceiling:.0f} ceiling "
+            f"((1−{verdict.confidence:.2f})×${value:.0f})"
+        )
     else:
         decision = Decision.AUTO
         reasons.append(f"low risk (score {total:.2f}), eval passed")
@@ -72,6 +83,7 @@ def assess(
         danger_component=danger_component,
         confidence_component=round(confidence_component, 4),
         total_score=total,
+        expected_error_cost=expected_error_cost,
         hard_line_triggered=hard_line_triggered,
         decision=decision,
         reasons=reasons,

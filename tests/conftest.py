@@ -37,6 +37,7 @@ def _offline_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "clearport_hts_backend", "off", raising=False)
 
     # Reset shared stores so collections do not leak across tests.
+    from clearport.memory.adjudications import reset_adjudications
     from clearport.memory.episodic import reset_episodic
     from clearport.memory.vector_store import reset_memory_stores
     from clearport.validation.hts_client import get_hts_validator
@@ -46,8 +47,10 @@ def _offline_env(monkeypatch: pytest.MonkeyPatch):
     reset_memory_stores()
     reset_episodic()
     reset_overlay()
+    reset_adjudications()
     yield
     get_hts_validator.cache_clear()
     reset_memory_stores()
     reset_episodic()
     reset_overlay()
+    reset_adjudications()

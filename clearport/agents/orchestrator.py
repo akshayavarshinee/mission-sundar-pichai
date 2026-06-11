@@ -20,11 +20,14 @@ from pydantic import BaseModel, Field
 from clearport.agents.auditor import Auditor
 from clearport.agents.executor import ExecutionResult, Executor
 from clearport.agents.patch_engine import PatchEngine
-from clearport.arize.tracing import get_tracer
+from clearport.arize.tracing import get_tracer, span_id_hex
 from clearport.config import settings
 from clearport.eval.baseline import get_baseline
 from clearport.eval.judge import Judge
+from clearport.eval.learned_judge import LearnedJudge
+from clearport.eval.oracle import get_oracle
 from clearport.eval.risk_tier import assess
+from clearport.memory.adjudications import AdjudicationStore
 from clearport.memory.episodic import EpisodicMemory, get_episodic
 from clearport.memory.recall import recall
 from clearport.schemas import (
@@ -79,17 +82,33 @@ class LoopResult(BaseModel):
     recovery_seconds: float = 0.0
     vetoed_lesson_ids: list[str] = Field(default_factory=list)
     trace_steps: list[TraceStep] = Field(default_factory=list)
+    verify_span_id: str | None = None
 
 
 class RecoveryLoop:
-    def __init__(self, episodic: EpisodicMemory | None = None) -> None:
+    def __init__(
+        self,
+        episodic: EpisodicMemory | None = None,
+        adjudications: AdjudicationStore | None = None,
+    ) -> None:
         self.episodic = episodic or get_episodic()
+        # The loop's own growing experience of real destination outcomes; the
+        # judge learns from it and every executed run adds to it.
+        self.adjudications = adjudications or AdjudicationStore(episodic=self.episodic)
         self.auditor = Auditor()
         self.patcher = PatchEngine()
-        self.judge = Judge()
+        self.judge = Judge(learned=LearnedJudge(store=self.adjudications))
         self.executor = Executor()
 
-    def run(self, rejection: RejectionEvent) -> LoopResult:
+    def run(self, rejection: RejectionEvent, *, execute: bool = True) -> LoopResult:
+        """Drive the full recovery loop for one rejection.
+
+        ``execute=False`` is a non-mutating dry run used by the benchmark/eval
+        harness: the real diagnose -> patch -> verify -> decide path runs, but no
+        label is bought, validation stays offline, and nothing is written to
+        episodic memory. The risk decision and patched payload are still produced
+        so the harness can score end-to-end behavior without side effects.
+        """
         tracer = get_tracer("clearport.loop")
         steps: list[TraceStep] = []
         t0 = time.perf_counter()
@@ -127,6 +146,7 @@ class RecoveryLoop:
             with _timed_step(tracer, "verify", steps) as vspan:
                 baseline = get_baseline(rejection.normalized_error_type, episodic=self.episodic)
                 verdict = self.judge.evaluate(rejection, patch, baseline, diagnosis=diagnosis)
+                verify_span_id = span_id_hex(vspan)
                 vspan.set_attribute("clearport.eval_passed", verdict.passed)
                 vspan.set_attribute("clearport.eval_confidence", verdict.confidence)
                 # Record the full evaluation as span attributes so the verdict is
@@ -147,7 +167,7 @@ class RecoveryLoop:
                 dspan.set_attribute("clearport.hard_line", risk.hard_line_triggered)
 
             with _timed_step(tracer, "act", steps) as aspan:
-                execution, status, action = self._act(rejection, patch, risk)
+                execution, status, action = self._act(rejection, patch, risk, execute=execute)
                 aspan.set_attribute("clearport.status", status.value)
 
             recovery_seconds = round(time.perf_counter() - t0, 4)
@@ -156,7 +176,8 @@ class RecoveryLoop:
             )
 
             with _timed_step(tracer, "learn", steps) as lspan:
-                self._learn(rejection, patch, verdict, risk, outcome)
+                if execute:
+                    self._learn(rejection, patch, verdict, risk, outcome)
                 lspan.set_attribute("clearport.memory_key", outcome.memory_key)
                 lspan.set_attribute("clearport.outcome.action", outcome.action.value)
 
@@ -179,15 +200,16 @@ class RecoveryLoop:
 
     # ── act / outcome / learn ────────────────────────────────────────────
     def _act(
-        self, rejection: RejectionEvent, patch: PatchProposal, risk: RiskAssessment
+        self, rejection: RejectionEvent, patch: PatchProposal, risk: RiskAssessment, *, execute: bool = True
     ) -> tuple[ExecutionResult, LoopStatus, ActionType]:
         if risk.decision is Decision.AUTO:
-            execution = self.executor.finalize(rejection, patch, buy=True)
+            execution = self.executor.finalize(rejection, patch, buy=execute, live=execute)
             if execution.carrier_result is CarrierResult.ACCEPTED:
-                return execution, LoopStatus.AUTO_RESOLVED, ActionType.AUTO_BOUGHT
+                action = ActionType.AUTO_BOUGHT if execute else ActionType.PENDING
+                return execution, LoopStatus.AUTO_RESOLVED, action
             return execution, LoopStatus.REJECTED, ActionType.PENDING
         # HUMAN: validate (no purchase) and hold for approval.
-        execution = self.executor.finalize(rejection, patch, buy=False)
+        execution = self.executor.finalize(rejection, patch, buy=False, live=execute)
         return execution, LoopStatus.AWAITING_APPROVAL, ActionType.PENDING
 
     def _build_outcome(
@@ -250,6 +272,33 @@ class RecoveryLoop:
             self.episodic.add_example(input_, output, metadata)
         except Exception as exc:  # noqa: BLE001 — telemetry write must not break the loop
             logger.warning("loop.learn_failed", error=str(exc))
+
+        # Adjudicate the resubmission against the INDEPENDENT oracle (carrier +
+        # destination registry) and record it, so the judge accumulates real
+        # destination outcomes and gets better over time. Best-effort; the label
+        # never comes from the gate's own policy lint, so the corpus stays an
+        # honest, independent training signal.
+        self._adjudicate(rejection, patch, outcome)
+
+    def _adjudicate(
+        self, rejection: RejectionEvent, patch: PatchProposal, outcome: Outcome
+    ) -> None:
+        try:
+            from clearport.validation.errors import policy_lint
+
+            carrier_ok = (
+                outcome.carrier_result is CarrierResult.ACCEPTED
+                or (
+                    outcome.carrier_result is CarrierResult.PENDING
+                    and policy_lint(patch.patched_payload) is None
+                )
+            )
+            adjudication = get_oracle().adjudicate_outcome(
+                rejection, patch.patched_payload, carrier_accepted=carrier_ok
+            )
+            self.adjudications.add(adjudication)
+        except Exception as exc:  # noqa: BLE001 — adjudication is best-effort learning
+            logger.warning("loop.adjudicate_failed", error=str(exc))
 
     # ── human-in-the-loop continuation (used by the API in Phase 6) ──────
     def buy_after_approval(

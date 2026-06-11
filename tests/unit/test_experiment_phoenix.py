@@ -25,9 +25,27 @@ class _FakeExperiments:
         return {"experiment_id": "exp-live-7"}
 
 
+class _FakeDataset:
+    def __init__(self, n: int, id: str = "ds-live-1") -> None:  # noqa: A002
+        self.example_count = n
+        self.id = id
+
+
+class _FakeDatasets:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def create_dataset(self, *, name, inputs, outputs, metadata, **kw):  # noqa: ANN001, ANN003
+        self.calls.append(
+            {"name": name, "inputs": inputs, "outputs": outputs, "metadata": metadata}
+        )
+        return _FakeDataset(len(inputs))
+
+
 class _FakeClient:
     def __init__(self) -> None:
         self.experiments = _FakeExperiments()
+        self.datasets = _FakeDatasets()
 
 
 def _seed_candidates(mem: InMemoryEpisodicMemory, n: int = 3) -> None:
@@ -50,7 +68,9 @@ def test_phoenix_experiment_registered_when_enabled(monkeypatch) -> None:
     )
 
     assert result.experiment_id == "exp-live-7"
+    assert result.experiment_dataset_id == "ds-live-1"
     assert len(fake.experiments.calls) == 1
+    assert len(fake.datasets.calls) == 1
     assert fake.experiments.calls[0]["dataset"].example_count == 3
     assert "accepted" in fake.experiments.calls[0]["evaluators"]
 

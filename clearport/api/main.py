@@ -122,6 +122,7 @@ def _run_summary(run: RecoveryRun) -> dict:
                 "danger": r.risk.danger_component,
                 "confidence": r.risk.confidence_component,
             },
+            "expected_error_cost": r.risk.expected_error_cost,
             "hard_line": r.risk.hard_line_triggered,
             "reasons": r.risk.reasons,
         },
@@ -209,6 +210,22 @@ def run_trace(run_id: str) -> dict:
         "total_ms": total,
         "steps": [s.model_dump() for s in steps],
     }
+
+
+@app.post("/api/investigate/{run_id}")
+def investigate(run_id: str) -> dict:
+    """Explain a run and re-ground its eval verdict from Phoenix over MCP.
+
+    A judge can trigger this live: it reads the run's verify-span annotations
+    back out of Phoenix through the ``@arizeai/phoenix-mcp`` server (a genuine
+    runtime MCP exercise) and returns a natural-language explanation. Degrades
+    to a deterministic explanation when MCP is unavailable (offline / no npx).
+    """
+    result = get_service().investigate(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return result
+
 
 
 @app.get("/api/approvals")
@@ -326,6 +343,57 @@ def intelligence() -> dict:
     from clearport.api.intelligence import compute_intelligence
 
     return compute_intelligence(get_service()).model_dump(mode="json")
+
+
+# Cache the benchmark report: it drives the loop ~70 times, so we never recompute
+# it on a dashboard poll. ``?refresh=true`` re-runs it; ``?register=true`` also
+# logs it to Phoenix as a real dataset + experiment (live only).
+_BENCHMARK_CACHE: dict[str, object] = {}
+
+
+@app.get("/api/eval/benchmark")
+def eval_benchmark(refresh: bool = False, register: bool = False) -> dict:
+    """Run (and cache) the synthetic recovery benchmark — the quantitative eval.
+
+    Returns the headline metrics + per-slice breakdown (the full per-case list is
+    omitted to keep the payload small). When ``register`` is set and Phoenix is
+    reachable, the suite is also logged as a real Phoenix dataset + experiment.
+    """
+    cached = _BENCHMARK_CACHE.get("report")
+    needs_register = register and not getattr(cached, "experiment_live", False)
+    if cached is None or refresh or needs_register:
+        from clearport.eval.benchmark import run_benchmark
+
+        cached = run_benchmark(register_phoenix=True if register else None)
+        _BENCHMARK_CACHE["report"] = cached
+    return cached.model_dump(mode="json", exclude={"cases"})
+
+
+# The judge-eval ("evaluate the evaluator") is cached too: it builds a learning
+# curve by re-scoring the judge against the independent oracle at growing levels
+# of experience. ``?refresh=true`` re-runs it; ``?register=true`` logs the real
+# Phoenix experiment whose task actually runs the judge (live only).
+_JUDGE_EVAL_CACHE: dict[str, object] = {}
+
+
+@app.get("/api/eval/judge")
+def eval_judge(refresh: bool = False, register: bool = False) -> dict:
+    """Run (and cache) the judge-quality eval: judge vs the independent oracle.
+
+    Returns the headline metrics + the learning curve (accuracy and false-auto-
+    clear as the judge accumulates independently-adjudicated experience), with
+    the per-case list omitted to keep the payload small. When ``register`` is set
+    and Phoenix is reachable, a real experiment whose task runs the judge is
+    logged so the improvement is clickable in Phoenix.
+    """
+    cached = _JUDGE_EVAL_CACHE.get("report")
+    needs_register = register and not getattr(cached, "experiment_live", False)
+    if cached is None or refresh or needs_register:
+        from clearport.eval.judge_eval import run_judge_eval
+
+        cached = run_judge_eval(register_phoenix=True if register else None)
+        _JUDGE_EVAL_CACHE["report"] = cached
+    return cached.model_dump(mode="json", exclude={"cases"})
 
 
 @app.get("/api/events")

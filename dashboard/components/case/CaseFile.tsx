@@ -15,6 +15,7 @@ import StatusPill from "@/components/ui/StatusPill";
 import RecoveryStepper from "@/components/case/RecoveryStepper";
 import TraceWaterfall from "@/components/case/TraceWaterfall";
 import CorrectionForm from "@/components/case/CorrectionForm";
+import InvestigatePanel from "@/components/case/InvestigatePanel";
 
 export default function CaseFile({
   run,
@@ -146,6 +147,7 @@ export default function CaseFile({
           </div>
 
           <TraceWaterfall trace={trace} />
+          <InvestigatePanel runId={run.run_id} />
         </div>
       </div>
     </div>

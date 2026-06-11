@@ -17,11 +17,14 @@ dependencies = [
     # ── Arize Phoenix: tracing, evals, client (the trust layer) ──
     "arize-phoenix>=17.0.0",
     "arize-phoenix-otel>=0.6.0",
-    "arize-phoenix-evals>=0.17.0",
-    "arize-phoenix-client>=1.0.0",
+    "arize-phoenix-evals>=3.0.0",
+    "arize-phoenix-client>=2.5.0",
     "openinference-instrumentation-google-adk>=0.1.0",
     "openinference-instrumentation-google-genai>=0.1.0",
     "openinference-instrumentation-mcp>=0.1.0",
+
+    # ── LLM-as-judge adapter for phoenix-evals (Vertex via litellm, reuses ADC) ──
+    "litellm>=1.40.0",
 
     # ── Model Context Protocol client (to talk to @arizeai/phoenix-mcp) ──
     "mcp>=1.2.0",
@@ -63,6 +66,7 @@ clearport-hello-trace = "clearport.scripts.hello_trace:main"
 clearport-mcp-handshake = "clearport.scripts.mcp_handshake:main"
 clearport-api = "clearport.api.main:run"
 clearport-demo = "clearport.scripts.demo:main"
+clearport-judge-eval = "clearport.eval.judge_eval:main"
 
 [build-system]
 requires = ["hatchling"]

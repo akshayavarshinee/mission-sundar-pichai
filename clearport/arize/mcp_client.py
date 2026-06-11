@@ -1,14 +1,22 @@
-"""Phoenix MCP client — the *active* half of ClearPort's Arize integration.
+"""Phoenix MCP client — ClearPort's Model Context Protocol surface to Arize.
 
-This is what satisfies the hackathon's partner requirement: at runtime the
-agent reaches into Arize Phoenix through the official ``@arizeai/phoenix-mcp``
-Model Context Protocol server to read traces/spans/annotations, pull dataset
-examples (memory tier ②), inspect experiments (the promotion gate), and manage
-prompts (memory tier ④).
+ClearPort exercises the official ``@arizeai/phoenix-mcp`` server (launched on
+demand via ``npx`` over stdio) in three concrete places:
 
-The server is a Node package launched on demand via ``npx`` over stdio. This
-module wraps the MCP session so the rest of the codebase can call high-level
-helpers (and so the agent can expose them as ADK tools in Phase 3).
+* **Startup handshake** (:func:`verify_tooling`) — confirms the server starts and
+  advertises the tools we depend on.
+* **On-demand investigate** (:func:`investigate_span_sync`, behind
+  ``/api/investigate``) — reads a run's verify-span annotations back out of
+  Phoenix through MCP, so the eval verdict can be re-grounded from the source of
+  truth on a judge's click.
+* **ADK agent toolset** (``clearport.arize.toolset``) — the Agent Builder agent
+  carries these tools so Gemini can read/write Arize in its own reasoning.
+
+The hot recovery path deliberately uses the in-process ``arize-phoenix-client``
+(HTTP) for annotations/datasets/experiments — reliable and npx-free — while MCP
+covers ops handshake, prompt management ④, and the agent/investigate surfaces.
+This module wraps the MCP session behind high-level helpers; ``mcp`` is imported
+lazily so the package stays importable offline.
 """
 
 from __future__ import annotations
@@ -120,3 +128,58 @@ async def call_tool(name: str, arguments: dict[str, Any] | None = None) -> Any:
     """Call a single Phoenix MCP tool and return its result."""
     async with phoenix_session() as session:
         return await session.call_tool(name, arguments=arguments or {})
+
+
+def _parse_annotations(result: Any) -> list[dict]:
+    """Extract the ``annotations`` array from a get-span-annotations result.
+
+    The MCP server returns its JSON payload in a text content block (and, on
+    newer clients, also as ``structuredContent``). Handle both.
+    """
+    import json
+
+    structured = getattr(result, "structuredContent", None)
+    if isinstance(structured, dict) and isinstance(structured.get("annotations"), list):
+        return structured["annotations"]
+    for block in getattr(result, "content", None) or []:
+        text = getattr(block, "text", None)
+        if not text:
+            continue
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(data, dict) and isinstance(data.get("annotations"), list):
+            return data["annotations"]
+    return []
+
+
+async def get_span_annotations(span_id: str) -> list[dict]:
+    """Read a span's annotations back through the Phoenix MCP ``get-span-annotations`` tool."""
+    result = await call_tool(
+        "get-span-annotations",
+        {"project_identifier": settings.phoenix_project, "span_ids": [span_id]},
+    )
+    return _parse_annotations(result)
+
+
+def investigate_span_sync(span_id: str) -> dict | None:
+    """Best-effort, synchronous Phoenix MCP read-back of a span's annotations.
+
+    Returns ``{"tool": "get-span-annotations", "annotations": [...]}`` or ``None``
+    when MCP is disabled/unavailable (offline, no ``npx``/Node, or a server
+    error). Never raises — the caller falls back to a deterministic explanation.
+    Safe to call from a FastAPI sync endpoint (runs in a worker thread with no
+    active event loop).
+    """
+    if not span_id or not settings.mcp_enabled:
+        return None
+    try:
+        import asyncio
+
+        annotations = asyncio.run(get_span_annotations(span_id))
+        logger.info("mcp.investigate", span_id=span_id, annotations=len(annotations))
+        return {"tool": "get-span-annotations", "annotations": annotations}
+    except Exception as exc:  # noqa: BLE001 — MCP read-back is best-effort
+        logger.warning("mcp.investigate_failed", span_id=span_id, error=str(exc))
+        return None

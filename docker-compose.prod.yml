@@ -74,10 +74,24 @@ services:
       - PHOENIX_PROJECT=clearport
       # ── Phoenix active half (in-process arize-phoenix-client, not per-call npx) ──
       # Episodic tier ② outcomes are mirrored into a real Phoenix dataset (visible
-      # in the Phoenix UI) and the promotion gate runs a real Phoenix experiment.
+      # in the Phoenix UI). The eval-gate runs phoenix-evals as the LLM judge and
+      # writes each verdict back as a span annotation; the promotion gate registers
+      # a real Phoenix experiment. The deterministic policy gate is always applied
+      # underneath, so the loop never blocks on Phoenix.
       - CLEARPORT_EPISODIC_BACKEND=phoenix-client
       - PHOENIX_DATASET=clearport-outcomes
       - PHOENIX_BASELINE_DATASET=clearport-accepted-baseline
+      # ── Phoenix evals judge (reuses the VM's Vertex ADC via litellm) ──
+      - CLEARPORT_EVALS_ENABLED=on
+      - CLEARPORT_EVALS_PROVIDER=litellm
+      - CLEARPORT_EVALS_MODEL=vertex_ai/${CLEARPORT_JUDGE_MODEL:-gemini-2.5-pro}
+      # ── Write eval verdicts back onto Phoenix spans + register real experiments ──
+      - CLEARPORT_ANNOTATIONS_ENABLED=on
+      - CLEARPORT_PHOENIX_EXPERIMENTS=on
+      # ── On-demand MCP read-back (POST /api/investigate reads verify-span
+      #    annotations back out of Phoenix over the Model Context Protocol). The
+      #    hot path stays npx-free; only this explicit action launches the server. ──
+      - CLEARPORT_MCP_ENABLED=on
       # ── Postgres + pgvector memory (tiers ① law / ③ lessons) ──
       - DATABASE_URL=postgresql+psycopg://clearport:${POSTGRES_PASSWORD:-clearport}@db:5432/clearport
       - CLEARPORT_VECTOR_BACKEND=pg

@@ -288,6 +288,70 @@ class PatchProposal(BaseModel):
     tool_calls_used: list[str] = Field(default_factory=list)
 
 
+class OracleSource(str, Enum):
+    """Where an independent acceptance label came from.
+
+    The oracle is *ground truth* about whether the destination gateway actually
+    accepts a (patched) declaration — deliberately independent of the eval-gate's
+    own logic, so it can never collapse into the gate grading itself.
+
+    * ``CARRIER_RESUBMIT`` — observed result of resubmitting to the real carrier
+      (EasyPost test mode).
+    * ``DESTINATION_REGISTRY`` — the destination single-window / registry rules
+      that the carrier does not enforce (the silent-rule surface).
+    * ``DESTINATION_OFFICER`` — an independent LLM "destination customs officer"
+      adjudication (separate persona/prompt from the gate judge).
+    * ``HUMAN`` — a human reviewer's accept/correct decision.
+    """
+
+    CARRIER_RESUBMIT = "carrier_resubmit"
+    DESTINATION_REGISTRY = "destination_registry"
+    DESTINATION_OFFICER = "destination_officer"
+    HUMAN = "human"
+
+
+class Adjudication(BaseModel):
+    """An independent ground-truth label for one (patched) declaration.
+
+    Captured *after* the fact (real life: you resubmit, then observe) and stored
+    so the learned judge can anticipate the destination next time. The label here
+    never comes from the gate's own ``policy_lint`` — that independence is what
+    makes a later judge-vs-oracle measurement meaningful rather than circular.
+    """
+
+    id: str = Field(default_factory=lambda: new_id("adj"))
+    created_at: datetime = Field(default_factory=utcnow)
+    memory_key: str
+    error_type: NormalizedErrorType
+    accepted: bool
+    source: OracleSource
+    detail: str = ""
+    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+    # A compact, embeddable description of the declaration that was adjudicated,
+    # so the learned judge can retrieve semantically-similar precedent.
+    features: str = ""
+
+
+class LearnedVerdict(BaseModel):
+    """The learned judge's opinion, derived from adjudicated precedent.
+
+    ``vote`` is ``accept`` / ``veto`` / ``abstain``. ``abstain`` means the judge
+    has too little relevant experience to have an opinion (e.g. a cold store), in
+    which case it never overrides the deterministic gate — so the system behaves
+    exactly as before until it has actually learned something.
+    """
+
+    vote: str = "abstain"  # "accept" | "veto" | "abstain"
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    basis: str = ""
+    neighbors_used: int = 0
+    source: str = "none"  # "knn" | "llm" | "none"
+
+    @property
+    def is_veto(self) -> bool:
+        return self.vote == "veto"
+
+
 class EvalRubric(BaseModel):
     structural_match: bool = False
     required_fields_ok: bool = False
@@ -311,6 +375,7 @@ class EvalVerdict(BaseModel):
     rubric: EvalRubric = Field(default_factory=EvalRubric)
     rationale: str = ""
     phoenix_annotation_id: str | None = None
+    learned: LearnedVerdict | None = None
 
 
 class RiskAssessment(BaseModel):
@@ -318,6 +383,7 @@ class RiskAssessment(BaseModel):
     danger_component: float
     confidence_component: float
     total_score: float
+    expected_error_cost: float = 0.0
     hard_line_triggered: bool
     decision: Decision
     reasons: list[str] = Field(default_factory=list)
@@ -359,7 +425,49 @@ class DistilledLesson(BaseModel):
     recommended_fix: str
     evidence_count: int = 0
     experiment_id: str | None = None
+    experiment_dataset_id: str | None = None
     baseline_score: float | None = None
     candidate_score: float | None = None
     promoted_at: datetime | None = None
     pass_rate: float = 1.0
+
+
+# ── the adaptive eval-gate (judge that improves with experience) ──────────────
+class JudgeCaseResult(BaseModel):
+    """One judge-evaluation case scored against the independent oracle."""
+
+    case_id: str
+    slice: str
+    oracle_accepted: bool
+    judge_accepted: bool
+    learned_vote: str
+    correct: bool
+    false_auto_clear: bool  # judge accepted something the oracle rejects
+
+
+class LearningCurvePoint(BaseModel):
+    """Judge accuracy after being given ``n_adjudications`` of experience."""
+
+    n_adjudications: int
+    accuracy: float
+    false_auto_clear_rate: float
+    recall_on_rejects: float
+
+
+class JudgeEvalReport(BaseModel):
+    """Judge-quality report: how well the *evaluator* tracks independent truth,
+    and how that improves as it accumulates adjudicated experience."""
+
+    generated_at: datetime = Field(default_factory=utcnow)
+    total: int
+    accuracy: float
+    precision: float
+    recall: float
+    false_auto_clear_rate: float
+    judge_source: str  # "knn" | "llm"
+    learning_curve: list[LearningCurvePoint] = Field(default_factory=list)
+    improvement: float = 0.0  # accuracy(full experience) − accuracy(cold)
+    experiment_id: str | None = None
+    experiment_dataset_id: str | None = None
+    experiment_live: bool = False
+    cases: list[JudgeCaseResult] = Field(default_factory=list)

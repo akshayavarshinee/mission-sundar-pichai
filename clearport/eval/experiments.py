@@ -25,6 +25,7 @@ logger = structlog.get_logger(__name__)
 
 class ExperimentResult(BaseModel):
     experiment_id: str
+    experiment_dataset_id: str | None = None
     memory_key: str
     error_type: str
     baseline_score: float
@@ -53,6 +54,12 @@ def _experiment_id_of(ran) -> str | None:  # noqa: ANN001
     return getattr(ran, "experiment_id", None) or getattr(ran, "id", None)
 
 
+def _dataset_id_of(dataset) -> str | None:  # noqa: ANN001
+    if isinstance(dataset, dict):
+        return dataset.get("id") or dataset.get("dataset_id")
+    return getattr(dataset, "id", None) or getattr(dataset, "dataset_id", None)
+
+
 def _register_phoenix_experiment(
     memory_key: str,
     error_type: NormalizedErrorType,
@@ -60,14 +67,16 @@ def _register_phoenix_experiment(
     baseline: float,
     candidate: float,
     client=None,  # noqa: ANN001 — phoenix.client.Client, injected in tests
-) -> str | None:
+) -> tuple[str, str | None] | None:
     """Register a genuine Phoenix experiment for this promotion (opt-in).
 
     Gated behind ``CLEARPORT_PHOENIX_EXPERIMENTS=on`` because Phoenix's
     experiment runner requires a reachable server even in dry-run; offline this
     is skipped entirely so the deterministic promotion path never blocks. When
-    enabled it runs the candidate corrections through Phoenix's experiment engine
-    and returns the real ``experiment_id`` (visible in the Phoenix UI).
+    enabled it uploads the candidate corrections as a real **server-side**
+    Phoenix dataset (so the experiment is visible and clickable in the Phoenix
+    UI) and runs them through Phoenix's experiment engine, returning the real
+    ``(experiment_id, dataset_id)`` pair.
     """
     if (settings.clearport_phoenix_experiments or "off").lower() != "on":
         return None
@@ -77,40 +86,40 @@ def _register_phoenix_experiment(
         import contextlib
         import io
 
-        from phoenix.client.resources.datasets import Dataset
-
-        examples = [
-            {
-                "id": r.get("id", f"cand-{i}"),
-                "input": r.get("input", {}) or {},
-                "output": r.get("output", {}) or {},
-                "metadata": r.get("metadata", {}) or {},
-            }
-            for i, r in enumerate(candidate_rows)
-        ]
-        dataset = Dataset.from_dict(
-            {
-                "id": memory_key,
-                "name": f"clearport-promotion::{memory_key}",
-                "version_id": "promotion",
-                "examples": examples,
-            }
-        )
-
-        def task(example):  # noqa: ANN001, ANN202
-            return example["output"].get("accepted")
-
-        def accepted(output) -> float:  # noqa: ANN001
-            return 1.0 if str(output).lower() == "true" else 0.0
-
         if client is None:
             from phoenix.client import Client
 
             client = Client(base_url=settings.phoenix_host, api_key=settings.phoenix_api_key)
 
+        # Fold the recorded outcome into the input so the task can echo it
+        # without depending on how the client binds expected/reference params.
+        inputs = [
+            {
+                **(r.get("input", {}) or {}),
+                "accepted": (r.get("output", {}) or {}).get("accepted"),
+            }
+            for r in candidate_rows
+        ]
+        outputs = [r.get("output", {}) or {} for r in candidate_rows]
+        metadata = [r.get("metadata", {}) or {} for r in candidate_rows]
+        dataset_name = f"clearport-promotion::{memory_key}::{new_id('v')}"
+
+        def task(input):  # noqa: ANN001, ANN202 — bound to example["input"]
+            return {"accepted": input.get("accepted")}
+
+        def accepted(output) -> float:  # noqa: ANN001
+            val = output.get("accepted") if isinstance(output, dict) else output
+            return 1.0 if str(val).lower() == "true" else 0.0
+
         # Phoenix prints a unicode summary/progress banner; redirect it so it
         # neither pollutes logs nor trips Windows console encoding.
         with contextlib.redirect_stdout(io.StringIO()):
+            dataset = client.datasets.create_dataset(
+                name=dataset_name,
+                inputs=inputs,
+                outputs=outputs,
+                metadata=metadata,
+            )
             ran = client.experiments.run_experiment(
                 dataset=dataset,
                 task=task,
@@ -124,11 +133,16 @@ def _register_phoenix_experiment(
                 print_summary=False,
             )
         exp_id = _experiment_id_of(ran)
+        dataset_id = _dataset_id_of(dataset)
         if exp_id:
             logger.info(
-                "experiment.phoenix_registered", memory_key=memory_key, experiment_id=exp_id
+                "experiment.phoenix_registered",
+                memory_key=memory_key,
+                experiment_id=exp_id,
+                dataset_id=dataset_id,
             )
-        return exp_id
+            return exp_id, dataset_id
+        return None
     except Exception as exc:  # noqa: BLE001 — never let telemetry break promotion
         logger.warning("experiment.phoenix_failed", memory_key=memory_key, error=str(exc))
         return None
@@ -153,10 +167,15 @@ def run_experiment(
 
     experiment_id = _register_phoenix_experiment(
         memory_key, error_type, candidate_rows, round(baseline, 3), round(candidate, 3), phoenix_client
-    ) or new_id("exp")
+    )
+    if experiment_id is None:
+        experiment_id, experiment_dataset_id = new_id("exp"), None
+    else:
+        experiment_id, experiment_dataset_id = experiment_id
 
     result = ExperimentResult(
         experiment_id=experiment_id,
+        experiment_dataset_id=experiment_dataset_id,
         memory_key=memory_key,
         error_type=error_type.value,
         baseline_score=round(baseline, 3),

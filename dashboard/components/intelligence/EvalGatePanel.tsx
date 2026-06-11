@@ -40,6 +40,24 @@ export default function EvalGatePanel({ gate }: { gate: EvalGateIntel }) {
       <p className="mt-3 rounded-lg border border-edge bg-panel2 p-2.5 text-[11px] text-muted">
         Judge model: <span className="font-mono text-body">{gate.judge_model}</span>
       </p>
+
+      {gate.learned_backend !== "off" && (
+        <div className="mt-2 rounded-lg border border-edge bg-panel2 p-2.5 text-[11px] text-muted">
+          <span className="font-medium text-body">Adaptive judge</span> — learns the
+          destination rules the carrier never checks, from{" "}
+          <span className="font-mono text-body">{gate.adjudications}</span> independently
+          adjudicated outcome(s) (<span className="font-mono">{gate.learned_backend}</span>).
+          {gate.learned_active > 0 && (
+            <>
+              {" "}
+              Weighed in on{" "}
+              <span className="font-mono text-body">{gate.learned_active}</span> recover(y/ies),
+              vetoing <span className="font-mono text-veto">{gate.learned_vetoes}</span> that the
+              carrier would have cleared.
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }

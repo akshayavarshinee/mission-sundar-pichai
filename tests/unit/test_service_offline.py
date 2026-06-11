@@ -25,6 +25,20 @@ def test_auto_resolved_run() -> None:
     assert run.result.outcome.demurrage_saved_usd > 0
 
 
+def test_investigate_offline_is_deterministic() -> None:
+    svc = _service()
+    run = svc.submit_seed("S4")
+    assert run is not None
+    out = svc.investigate(run.id)
+    assert out is not None
+    assert out["run_id"] == run.id
+    assert out["mcp_used"] is False  # offline: no Phoenix MCP read-back
+    assert out["annotations"] == []
+    assert "eval-gate" in out["explanation"]
+    # An unknown run id yields no investigation.
+    assert svc.investigate("missing") is None
+
+
 def test_escalation_then_approval() -> None:
     svc = _service()
     run = svc.submit_seed("S2")  # EEI hard line -> awaiting approval

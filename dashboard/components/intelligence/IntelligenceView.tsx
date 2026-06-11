@@ -12,6 +12,7 @@ import ProgressionPanel from "@/components/intelligence/ProgressionPanel";
 import EvalGatePanel from "@/components/intelligence/EvalGatePanel";
 import SelfHealPanel from "@/components/intelligence/SelfHealPanel";
 import LessonTimeline from "@/components/intelligence/LessonTimeline";
+import BenchmarkPanel from "@/components/intelligence/BenchmarkPanel";
 
 // Events that change what the Intelligence page should show.
 const REFRESH = new Set([
@@ -118,6 +119,8 @@ export default function IntelligenceView() {
             </div>
           ) : null}
 
+          <BenchmarkPanel />
+
           <MemoryTiers memory={report.memory} />
 
           {report.lesson_timeline.length > 0 ? <LessonTimeline lessons={report.lesson_timeline} /> : null}
@@ -142,6 +145,30 @@ export default function IntelligenceView() {
               <p className="mb-3 mt-1 text-xs text-muted">
                 The HTS / CROSS / EEI corpus the Auditor cites — law has veto over experience.
               </p>
+              {report.memory.authorities.length > 0 ? (
+                <div className="mb-4">
+                  <div className="mb-1.5 text-[10px] uppercase tracking-wide text-faint">
+                    Rejection class → cited authority
+                  </div>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {report.memory.authorities.map((a) => (
+                      <div
+                        key={a.error_type}
+                        title={a.basis}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-panel2 px-2.5 py-1.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-[11px] font-medium text-body">{a.label}</div>
+                          <div className="truncate text-[10px] text-faint">{a.regime}</div>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-veto/40 bg-veto/10 px-2 py-0.5 font-mono text-[10px] text-veto">
+                          {a.short}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
                 {law.map((r) => (
                   <li key={r.id} className="rounded-lg border border-edge bg-panel2 p-3">

@@ -6,8 +6,8 @@
 <h1 align="center">ClearPort</h1>
 
 <p align="center">
-  <strong>The autonomous customs-recovery layer with an evaluation conscience.</strong><br/>
-  Diagnose rejections · Patch declarations · Arize Phoenix must approve every fix before any real-money action.
+  <strong>The autonomous customs-recovery layer with an evaluation conscience that learns.</strong><br/>
+  Diagnose rejections · Patch declarations · An eval-gate (Arize Phoenix when live) must approve every fix before any real-money action — and that gate gets better with experience.
 </p>
 
 <p align="center">
@@ -20,14 +20,14 @@
 
 <p align="center">
   Built for the <strong>Arize partner track</strong> of <em>Agents for Real-World Challenges</em> (Gemini hackathon).<br/>
-  Runtime brain: <strong>Gemini 3</strong> on Google Cloud Agent Builder (ADK) · Trust layer: <strong>Arize Phoenix</strong> via <code>@arizeai/phoenix-mcp</code> + OpenInference/OTel.
+  Runtime brain: <strong>Gemini 3</strong> on Vertex AI, driving a fully-traced Python recovery loop (also exposed as a Google ADK agent) · Trust layer: <strong>Arize Phoenix</strong> via <code>arize-phoenix-client</code> + <code>@arizeai/phoenix-mcp</code> + OpenInference/OTel.
 </p>
 
 ---
 
 ## One-line definition
 
-**ClearPort** is an autonomous customs-recovery layer that heals rejected cross-border shipping declarations — diagnosing the rejection, patching the declaration, and using **Arize Phoenix** as an *evaluation conscience* that must approve every fix against historically-accepted shipments before any real-money action. Low-risk fixes auto-clear; high-value or restricted ones escalate to a human; and every outcome becomes memory, so the same error self-heals next time.
+**ClearPort** is an autonomous customs-recovery layer that heals rejected cross-border shipping declarations — diagnosing the rejection, patching the declaration, and using **Arize Phoenix** as an *evaluation conscience* that must approve every fix against historically-accepted shipments before any real-money action. Low-risk fixes auto-clear; high-value or restricted ones escalate to a human; and every outcome becomes memory, so the same error self-heals next time. The eval-gate itself is **adaptive**: a learned judge anticipates the *destination* rejections the carrier never checks, generalising from independently-adjudicated outcomes, so it measurably improves as it accumulates experience.
 
 ---
 
@@ -54,7 +54,7 @@
 |--------|-------------|
 | **Live web demo** | [clearport-dynamite.vercel.app](https://clearport-dynamite.vercel.app/) — click **▶ Play full demo** for the full 6-beat + wildcard storyboard |
 | **Console demo (offline)** | `uv run clearport-demo` — narrated walk-through, identical service code path (best for screen-recording) |
-| **Storyboard script** | [`docs/DEMO.md`](./docs/DEMO.md) — ~3-minute judge walkthrough with narration cues |
+| **Storyboard script** | [`docs/DEMO.md`](./docs/DEMO.md) — live-VM + Phoenix judge walkthrough with narration cues |
 
 ### Prototype screenshots
 
@@ -100,13 +100,14 @@ The *parts* aren't new — HS classification and customs doc-gen exist. **The cl
 diagnose → patch → eval-gate → tiered act → learn
 ```
 
-…wrapped in an **evaluation conscience** and an **evolving, tiered memory**. Three properties make it defensible:
+…wrapped in an **evaluation conscience** and an **evolving, tiered memory**. Four properties make it defensible:
 
 | Property | What it means |
 |----------|---------------|
 | **Eval-gate** | Arize Phoenix can **veto** a wrong fix on a high-value parcel *before* any spend |
 | **Tiered human oversight** | Explicit, not implicit — a hard **$2,500** line triggers human review |
-| **Outcomes become memory** | A fix enters permanent memory only after a Phoenix experiment **beats baseline**; the same error then **self-heals** autonomously |
+| **Outcomes become memory** | A fix enters permanent memory only after an experiment (deterministic offline; registered natively in Phoenix when enabled) **beats baseline**; the same error then **self-heals** autonomously |
+| **The evaluator improves** | A learned judge anticipates *destination* rejections the carrier-side lint can't see, learning from independently-adjudicated outcomes — measured against an independent oracle, not itself, so the improvement is real and non-circular |
 
 ### Competitive landscape
 
@@ -156,7 +157,7 @@ ClearPort is **layered**. Each layer is a clean boundary; arrows indicate real c
 ```mermaid
 flowchart TB
     subgraph A["Layer A — Presentation"]
-        UI[Next.js 14 Dashboard]
+        UI[Next.js 16 Dashboard]
         UI -->|REST + SSE| B
     end
 
@@ -193,10 +194,9 @@ flowchart TB
     end
 
     subgraph EXT["External Systems"]
-        GEM[Vertex Gemini 3]
+        GEM[Vertex AI Gemini]
         EMB[gemini-embedding-001]
-        PG[(Cloud SQL Postgres)]
-        SM[Secret Manager]
+        PG[(Postgres + pgvector)]
     end
 
     B --> C
@@ -214,9 +214,9 @@ flowchart TB
 
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
-| **A — Presentation** | Next.js 14 (App Router + Tailwind) | `Topbar`, `MetricsBar`, `SeedControls`, `TraceTimeline`, `EvalVerdictCard`, `ApprovalQueue`, `DriftBanner` |
-| **B — Orchestration** | FastAPI on Cloud Run / GCE | `/api/recover`, `/api/events` (SSE), `/api/approvals`, `/api/metrics`, `/api/learn`, `/api/drift` |
-| **C — Agent runtime** | Google ADK + Gemini 3 | Four agents over one closed loop (Orchestrator, Auditor, Patch Engine, Self-Healer + Executor) |
+| **A — Presentation** | Next.js 16 (App Router + Tailwind) | `Topbar`, `MetricsBar`, `SeedControls`, `TraceTimeline`, `EvalVerdictCard`, `ApprovalQueue`, `DriftBanner` |
+| **B — Orchestration** | FastAPI on a GCE VM (Docker Compose) | `/api/recover`, `/api/events` (SSE), `/api/approvals`, `/api/metrics`, `/api/learn`, `/api/drift`, `/api/eval/benchmark`, `/api/investigate/{run_id}` |
+| **C — Agent runtime** | Google ADK + Gemini | Plain-Python closed loop (Orchestrator, Auditor, Patch Engine, Executor); "Self-Healer" is the eval/risk/learning/drift role. Also wrapped as an ADK `root_agent` |
 | **D — Validation** | EasyPost + Regional Overlay | Real carrier rejections + controllable silent schema-change surface |
 | **E — Memory** | Postgres/pgvector + Phoenix | ① law · ② episodic · ③ lessons · ④ prompts (Design B: semantic-first, **law has veto**) |
 | **F — Trust** | Arize Phoenix | Passive OTel tracing + active MCP access (datasets, experiments, prompts, evals) |
@@ -333,6 +333,50 @@ flowchart LR
 
 ---
 
+## The adaptive eval-gate (evaluate the evaluator)
+
+The eval-gate doesn't just *run* — it **learns**, and we measure that the learning is real rather than circular.
+
+**The trap we avoid.** It's easy to "grade" an eval-gate with the very rule the gate already enforces (`policy_lint`). That makes "false-auto-clear ≈ 0" a tautology and the LLM non-load-bearing. ClearPort instead measures the gate against an **independent oracle** that models the *destination registry* — rules the carrier never checks — so the judge is graded by a different authority than the one it uses to decide.
+
+| Piece | What it is | Why it's honest |
+|-------|-----------|-----------------|
+| **Independent oracle** (`eval/oracle.py`) | Ground truth about whether the **destination** would accept a (patched) declaration: an accepted-tariff-heading allow-list, a full-legal-name signer rule, and an undervaluation floor — plus, when live, an independent "destination customs officer" LLM with its own persona | Sourced **outside** the gate's `policy_lint`; rejects declarations the carrier accepts |
+| **Adjudication memory** (`memory/adjudications.py`) | Every real destination outcome, embedded for semantic kNN retrieval; mirrored into the Phoenix episodic ② dataset when live | The judge's training signal is *observed outcomes*, never the gate's own logic |
+| **Learned judge** (`eval/learned_judge.py`) | Predicts the destination verdict from semantically-similar precedent — similarity-weighted **kNN** offline, **Gemini few-shot** in-context learning live | Improves as the corpus grows; **nothing hard-coded** |
+
+**It can only ever tighten, and it stays quiet until it has learned something.** The learned judge abstains until it has enough relevant precedent (default ≥ 3 neighbours above a similarity floor), so a cold store leaves the gate's behaviour identical to before. A confident veto (default: ≥ 60 % of similarity-weighted neighbours were rejected by the destination) fails an otherwise-passing gate; `accept`/`abstain` never loosen it. It defaults **off offline** (`auto` → on only when Phoenix is live), so the offline demo and tests are unaffected.
+
+```mermaid
+flowchart LR
+    OUT[Real destination outcomes] --> ADJ[(Adjudication memory<br/>kNN over embeddings)]
+    NEW[New carrier-clean declaration] --> J[Learned judge]
+    ADJ -->|nearest precedent| J
+    J --> VOTE{enough relevant<br/>precedent?}
+    VOTE -->|no| ABS[abstain — gate unchanged]
+    VOTE -->|yes, mostly rejected| VETO[veto — tighten the gate]
+    VOTE -->|yes, mostly accepted| OK[accept]
+    ORC[Independent oracle<br/>destination registry] -.labels.-> OUT
+```
+
+### The learning curve (the headline artifact)
+
+`clearport-judge-eval` (`eval/judge_eval.py`) is the **meta-eval**: it generates a labelled suite of carrier-clean declarations, labels each by the independent oracle, then scores the gate (policy lint **+** learned judge) against that oracle while feeding the judge progressively more adjudicated experience. The offline reference run is deterministic:
+
+| Experience (adjudications) | Accuracy | False-auto-clear | Recall on rejects |
+|---:|---:|---:|---:|
+| 0 (cold) | 50.0 % | 50.0 % | 0.0 % |
+| 6 | 62.5 % | 37.5 % | 25.0 % |
+| 12 | 68.75 % | 31.25 % | 37.5 % |
+| 18 | 87.5 % | 12.5 % | 75.0 % |
+| 24 (taught) | **100 %** | **0 %** | **100 %** |
+
+A cold judge auto-clears the destination-restricted half of the suite; with experience it learns to anticipate those rejections, driving false-auto-clear to zero (**+50 % accuracy, cold → taught**). When Phoenix is live, the suite is registered as a **real experiment whose task actually runs the judge** (no label echo) and whose evaluators (`agrees_with_oracle`, `no_false_auto_clear`) score against the oracle — so the improvement is clickable in Phoenix.
+
+> Reproduce locally: `uv run clearport-judge-eval` (offline, no keys) prints the metrics and the curve above.
+
+---
+
 ## Drift detection (silent rule change)
 
 Triggered by `/api/drift/{seed}`:
@@ -350,19 +394,21 @@ flowchart LR
 
 ## Where Arize Phoenix is load-bearing
 
-Remove Phoenix and the system stops working.
+Phoenix is the project's trust layer. **When live**, it provides the eval-gate's `phoenix-evals` judge, the verdict **annotations** on the verify span, the episodic ② datasets, the promotion **experiment** and the synthetic **benchmark** experiment, prompt management ④, and end-to-end tracing. **Offline**, a deterministic backstop stands in for each (so the demo is reproducible with no keys) — but in the live system the conscience, the learning substrate, and the observability are all Phoenix.
 
-| Role | Mechanism | Phoenix surface / MCP tools |
-|------|-----------|----------------------------|
-| **Eval-gate** | LLM-as-judge must pass before any label is bought | `arize-phoenix-evals`; verdict → annotation |
-| **Risk tier input** | Eval confidence feeds auto-vs-human decision | Derived from verdict |
-| **Precedent recall (②)** | Read episodic memory | `list-datasets`, `get-dataset-examples` |
-| **Write outcomes (②)** | Self-heal record + human corrections | `add-dataset-examples` |
-| **Promotion gate (②→③)** | Experiment must beat baseline | `list-experiments-for-dataset`, `get-experiment-by-id` |
-| **Procedural prompts (④)** | Versioned reasoning | `list/get/upsert-prompt`, version tags |
-| **Tracing / drift** | Every step is a span | OpenInference/OTel; `get-trace`, `get-spans`, `get-span-annotations` |
+| Role | Mechanism (live) | Phoenix surface |
+|------|------------------|-----------------|
+| **Eval-gate** | `phoenix-evals` LLM judge **AND** a deterministic policy backstop — the model can only *tighten*; must pass before any label is bought | `arize-phoenix-evals` (LiteLLM → Vertex `gemini-2.5-pro`) |
+| **Verdict annotation** | Each verdict is written back onto the verify span | `arize-phoenix-client` `add_span_annotation` (`eval_gate`: label / score / explanation) |
+| **Risk-tier input** | Eval confidence + an **expected-error-cost** term feed the auto-vs-human decision | derived from the verdict |
+| **Episodic ② (read/write)** | Outcomes + human corrections mirrored to Phoenix datasets | `arize-phoenix-client` datasets (`clearport-outcomes`, `clearport-accepted-baseline`) |
+| **Promotion gate (②→③)** | A real Phoenix **experiment** must beat baseline before a lesson is promoted | `arize-phoenix-client` `run_experiment` → real experiment id (deep-linked) |
+| **Benchmark** | A synthetic labeled suite (7 error classes + an adversarial slice) → an experiment reporting **false-auto-clear** + correctness/safety/diagnosis | `arize-phoenix-client` `run_experiment` + evaluators |
+| **Procedural prompts ④** | Versioned reasoning templates (optional; default in-repo) | Phoenix prompt mgmt over **MCP** (`get-prompt-by-identifier`, `upsert-prompt`) |
+| **Tracing / drift** | Every loop step is a span | OpenInference/OTel → Phoenix |
+| **Investigate (on-demand)** | Read a run's `eval_gate` annotation back **over MCP** | `@arizeai/phoenix-mcp` `get-span-annotations` via `POST /api/investigate/{run_id}` |
 
-**MCP vs OTel split:** OTel = passive trace emission; Phoenix MCP = active runtime access to memory, datasets, experiments, and prompts. Required tools are asserted at handshake (`clearport-mcp-handshake`).
+**Client vs MCP — the request hot path is npx-free.** The per-request recovery loop uses the in-process **`arize-phoenix-client`** (HTTP) for evals, span annotations, datasets, and experiments — reliable, with no Node in the request path. **`@arizeai/phoenix-mcp`** (the Model Context Protocol surface, launched via `npx`) is used in four explicit, non-hot-path places: the **startup handshake** (`clearport-mcp-handshake` / `verify_tooling`) that asserts the required tools exist, the **ADK agent toolset** (the Agent-Builder surface), the **on-demand `/api/investigate`** read-back (`get-span-annotations`), and **prompt management ④** when `CLEARPORT_PROMPTS_BACKEND=phoenix`. OTel stays passive (trace emission); MCP is explicit, on-demand runtime access — not something the loop reasons through on every request.
 
 ---
 
@@ -407,16 +453,16 @@ ClearPort runs **100% offline by default** — every external dependency has a d
 | Category | Technology |
 |----------|------------|
 | Language | Python 3.12 |
-| Agent framework | Google ADK on Vertex AI Agent Builder |
-| LLM | Gemini 3 (`gemini-3-pro`) |
-| Embeddings | Vertex `gemini-embedding-001` (3072-d) |
+| Agent framework | Google ADK `root_agent` surface (`adk_app.py`) over a plain-Python, fully-traced recovery loop |
+| LLM | Gemini 3 on Vertex AI via `CLEARPORT_GEMINI_MODEL` (repo default `gemini-3-pro`; hosted demo runs `gemini-2.5-pro`) |
+| Embeddings | Vertex `gemini-embedding-001` (3072-d) when live; deterministic local hashing (3072-d) offline |
 | Tracing / evals | `arize-phoenix-otel`, `arize-phoenix-evals`, OpenInference instrumentors |
 | MCP | `mcp` client → `@arizeai/phoenix-mcp` via `npx` |
 | Carrier | EasyPost (test mode) |
 | Backend | FastAPI + Uvicorn + `sse-starlette` |
-| Dashboard | Next.js 14 + Tailwind |
-| Persistence | Postgres + pgvector (SQLAlchemy + psycopg) on Cloud SQL |
-| Secrets | Google Secret Manager |
+| Dashboard | Next.js 16 (App Router) + Tailwind |
+| Persistence | Postgres + pgvector (SQLAlchemy + psycopg) — self-hosted container on the VM; schema from `infra/cloudsql/001_init.sql` |
+| Secrets / creds | `.env` on the VM + the VM's attached service account (ADC); no secrets in the repo |
 | Local dev | Docker Compose (Phoenix `:6006`, Postgres `:5432`) |
 | Logging | structlog |
 
@@ -458,19 +504,23 @@ flowchart TB
 
 | Resource | Service |
 |----------|---------|
-| Cloud Run × 2 | FastAPI backend, Next.js dashboard (or Vercel for frontend) |
-| Cloud SQL | Postgres + pgvector — memory ①/③ + app state |
-| Phoenix Cloud / local | Traces, datasets, experiments, prompts |
-| Vertex AI | Gemini 3 + embeddings |
-| Secret Manager | API keys (none in repo) |
+| GCE VM (Docker Compose) | Caddy (HTTPS :443), FastAPI backend, Next.js dashboard, Phoenix, Postgres — all containers on one VM |
+| Vercel (optional) | Hosted Next.js dashboard, proxying REST + SSE to the VM backend |
+| Postgres + pgvector | Self-hosted container on the VM — memory ①/③ + app state |
+| Arize Phoenix | Self-hosted container on the VM (`:6006`) — traces, datasets, experiments, prompts |
+| Vertex AI | Gemini (hosted demo: `gemini-2.5-pro`) + embeddings, via the VM's attached service account |
 
-**Config-only switching** — every live backend toggled by env var:
+**Config-only switching** — every live backend toggled by env var (the hosted demo sets `pg` + `auto` embeddings + `phoenix-client`):
 
 ```text
-CLEARPORT_VECTOR_BACKEND=pg
-CLEARPORT_EMBEDDINGS_BACKEND=vertex
-CLEARPORT_EPISODIC_BACKEND=phoenix
-CLEARPORT_PROMPTS_BACKEND=phoenix
+CLEARPORT_VECTOR_BACKEND=pg                # pgvector for memory ①/③
+CLEARPORT_EMBEDDINGS_BACKEND=vertex        # or "auto" (Vertex when a GCP project is set)
+CLEARPORT_EPISODIC_BACKEND=phoenix-client  # in-process Phoenix client for ② datasets; "phoenix" uses MCP
+CLEARPORT_PROMPTS_BACKEND=phoenix          # Phoenix prompt mgmt for ④ over MCP; default "local" in-repo templates
+CLEARPORT_EVALS_ENABLED=on                 # phoenix-evals judge (LiteLLM→Vertex); "auto" = on when Phoenix is live
+CLEARPORT_ANNOTATIONS_ENABLED=on           # write each eval verdict back as an `eval_gate` span annotation
+CLEARPORT_PHOENIX_EXPERIMENTS=on           # register real Phoenix experiments (promotion + benchmark)
+CLEARPORT_MCP_ENABLED=on                   # on-demand /api/investigate read-back over MCP; "auto" follows Phoenix-live
 ```
 
 Deploy scripts: `infra/deploy/setup_gcp.sh` · `deploy_backend.sh` · `deploy_dashboard.sh` · `vm_deploy.sh`
@@ -563,7 +613,7 @@ The four presentation infographics above follow the hackathon slide template sty
 
 - [x] **Phase 0–11** — Full stack: agents, eval-gate, HITL, learning, drift, dashboard, metrics, demo
 - [x] Public repo · **Apache-2.0**
-- [x] **Gemini 3** + **Google ADK** Agent Builder
+- [x] **Gemini 3** (Vertex AI) + **Google ADK** `root_agent` surface
 - [x] **Arize Phoenix** load-bearing via `@arizeai/phoenix-mcp` + OpenInference OTel
 - [x] [Live deployment](https://clearport-dynamite.vercel.app/) on Vercel + GCP
 - [x] Reproducible offline path (no keys)

@@ -75,6 +75,7 @@ def _synthesize_lesson(
         recommended_fix=fix,
         evidence_count=experiment.evidence_count,
         experiment_id=experiment.experiment_id,
+        experiment_dataset_id=experiment.experiment_dataset_id,
         baseline_score=experiment.baseline_score,
         candidate_score=experiment.candidate_score,
         promoted_at=utcnow(),

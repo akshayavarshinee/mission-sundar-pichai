@@ -50,6 +50,51 @@ class Settings(BaseSettings):
     phoenix_dataset: str = "clearport-outcomes"
     phoenix_baseline_dataset: str = "clearport-accepted-baseline"
 
+    # ── Evaluation conscience (Arize Phoenix evals as the LLM judge) ──────
+    # "auto" turns the phoenix-evals judge on whenever a live Phoenix is in the
+    # loop; "on"/"off" force it. Offline (or on any failure) the judge falls back
+    # to the deterministic policy gate, so the loop never blocks on the model.
+    clearport_evals_enabled: str = "auto"
+    # phoenix.evals LLM adapter. "litellm" reuses the VM's Vertex ADC via the
+    # "vertex_ai/<model>" route (no extra key); "google" uses a Gemini API key.
+    clearport_evals_provider: str = "litellm"
+    # Judge model for phoenix-evals; defaults to "vertex_ai/<judge_model>".
+    clearport_evals_model: str | None = None
+
+    # ── Span annotations (write eval verdicts back onto Phoenix spans) ─────
+    # "auto" writes the eval verdict as a Phoenix span annotation when Phoenix
+    # is live; "on"/"off" force it. Best-effort — never blocks or breaks a run.
+    clearport_annotations_enabled: str = "auto"
+
+    # ── Phoenix MCP (runtime read-back via @arizeai/phoenix-mcp) ───────────
+    # Gates the on-demand /api/investigate Phoenix MCP read-back. "auto" enables
+    # it when Phoenix is live; "on"/"off" force it. Best-effort: a missing npx /
+    # Node runtime or server error degrades to the deterministic explanation.
+    clearport_mcp_enabled: str = "auto"
+
+    # ── Independent oracle (destination ground truth, NOT policy_lint) ─────
+    # The live "destination customs officer" LLM is an extra, independent model
+    # call, so it is opt-in even live; "on"/"auto" enable it when Gemini is live.
+    # The deterministic destination registry is always available as the floor.
+    clearport_oracle_officer: str = "off"
+
+    # ── Adaptive eval-gate (judge that learns from adjudicated experience) ─
+    # The learned judge predicts the destination's verdict from semantically-
+    # similar adjudicated precedent (kNN offline / LLM few-shot live). It only
+    # ever *tightens* the gate and abstains until it has enough relevant
+    # experience, so an empty store leaves the gate's behaviour unchanged.
+    # "auto" enables it when Phoenix is live; "on"/"off" force it.
+    clearport_learned_judge: str = "auto"
+    clearport_learned_judge_k: int = 5
+    clearport_learned_judge_min_evidence: int = 3
+    clearport_learned_judge_min_similarity: float = 0.25
+    # Fraction of (similarity-weighted) neighbours that must have been rejected
+    # by the destination before the learned judge will veto a carrier-clean fix.
+    clearport_learned_judge_veto_fraction: float = 0.6
+    # Mirror each adjudication into episodic ② (so it shows up in Phoenix). "auto"
+    # follows whether Phoenix is live; "on"/"off" force it.
+    clearport_adjudications_mirror: str = "auto"
+
     # ── EasyPost (test mode only) ─────────────────────────────────────────
     easypost_api_key: str | None = None
     easypost_mode: str = "test"
@@ -81,6 +126,12 @@ class Settings(BaseSettings):
     # ── Risk / tier ───────────────────────────────────────────────────────
     clearport_hard_line_usd: float = 2500.0
     clearport_risk_threshold: float = 0.55
+    # Cost-of-wrong ceiling: an AUTO clear is escalated when the expected cost of
+    # being wrong — (1 − eval confidence) × declared value — exceeds this. It
+    # makes the tier value-aware below the hard line: a low-confidence fix on a
+    # mid-value parcel goes to a human even if the weighted score is under
+    # threshold.
+    clearport_max_auto_error_cost_usd: float = 400.0
 
     # ── Economics (for the $-saved metric) ────────────────────────────────
     clearport_broker_days: float = 3.0
@@ -105,6 +156,74 @@ class Settings(BaseSettings):
     def collector_endpoint(self) -> str:
         """OTel span export endpoint; defaults to the Phoenix host."""
         return self.phoenix_collector_endpoint or self.phoenix_host
+
+    @property
+    def phoenix_live(self) -> bool:
+        """True when a real Phoenix is in the loop.
+
+        Mirrors the memory factories' own notion of "live": episodic ② on the
+        in-process arize-phoenix-client ("phoenix-client"/"client") or the MCP
+        backend ("phoenix"); prompts ④ on "phoenix"; or a set Phoenix API key
+        (Arize cloud). Single source of truth for the "auto" toggles below.
+        """
+        episodic = (self.clearport_episodic_backend or "").lower()
+        prompts = (self.clearport_prompts_backend or "").lower()
+        return (
+            bool(self.phoenix_api_key)
+            or episodic in {"phoenix", "phoenix-client", "client"}
+            or prompts == "phoenix"
+        )
+
+    @staticmethod
+    def _resolve_toggle(value: str | None, *, live: bool) -> bool:
+        """Resolve an "auto"/"on"/"off" tri-state against whether Phoenix is live."""
+        v = (value or "auto").strip().lower()
+        if v in {"on", "true", "1", "yes"}:
+            return True
+        if v in {"off", "false", "0", "no"}:
+            return False
+        return live  # "auto"
+
+    @property
+    def evals_enabled(self) -> bool:
+        """Whether the phoenix-evals LLM judge should run (else deterministic gate)."""
+        return self._resolve_toggle(self.clearport_evals_enabled, live=self.phoenix_live)
+
+    @property
+    def annotations_enabled(self) -> bool:
+        """Whether eval verdicts are written back as Phoenix span annotations."""
+        return self._resolve_toggle(
+            self.clearport_annotations_enabled, live=self.phoenix_live
+        )
+
+    @property
+    def mcp_enabled(self) -> bool:
+        """Whether the on-demand Phoenix MCP read-back (investigate) should run."""
+        return self._resolve_toggle(self.clearport_mcp_enabled, live=self.phoenix_live)
+
+    @property
+    def oracle_officer_enabled(self) -> bool:
+        """Whether the live independent destination-officer LLM oracle should run."""
+        return self._resolve_toggle(self.clearport_oracle_officer, live=False)
+
+    @property
+    def learned_judge_enabled(self) -> bool:
+        """Whether the adaptive (learned) judge influences the eval-gate."""
+        return self._resolve_toggle(self.clearport_learned_judge, live=self.phoenix_live)
+
+    @property
+    def adjudications_mirror_enabled(self) -> bool:
+        """Whether adjudications are mirrored into episodic ② (Phoenix-visible)."""
+        return self._resolve_toggle(self.clearport_adjudications_mirror, live=self.phoenix_live)
+
+    @property
+    def evals_model(self) -> str:
+        """Resolved phoenix-evals judge model id (provider-aware default)."""
+        if self.clearport_evals_model:
+            return self.clearport_evals_model
+        if (self.clearport_evals_provider or "").lower() == "litellm":
+            return f"vertex_ai/{self.clearport_judge_model}"
+        return self.clearport_judge_model
 
     @property
     def is_cloud(self) -> bool:

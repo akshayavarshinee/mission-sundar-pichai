@@ -72,7 +72,7 @@ export default function ArizeStrip({ arize }: { arize: ArizeIntel }) {
           hint={`${g.passed}/${g.total} passed`}
           tone="text-good"
         />
-        <Tile icon={FlaskConical} label="Experiments won" value={arize.experiments_won} hint="beat baseline" tone="text-veto" />
+        <Tile icon={FlaskConical} label="Experiments won" value={arize.experiments_won} hint="live in Phoenix" tone="text-veto" />
         <Tile icon={GraduationCap} label="Lessons promoted" value={arize.lessons_promoted} hint="to memory ③" tone="text-good" />
       </div>
 

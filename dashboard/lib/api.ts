@@ -94,6 +94,7 @@ export interface RunSummary {
     decision: string;
     score: number;
     components: { value: number; danger: number; confidence: number };
+    expected_error_cost: number;
     hard_line: boolean;
     reasons: string[];
   };
@@ -205,6 +206,16 @@ export interface TierUsage {
   detail: string[];
 }
 
+// One rejection class → the recognized authority that governs it (seeds/kb/law.py).
+export interface AuthorityMap {
+  error_type: string;
+  label: string;
+  regime: string;
+  authority: string;
+  short: string;
+  basis: string;
+}
+
 export interface MemoryIntel {
   law_count: number;
   episodic_total: number;
@@ -215,6 +226,7 @@ export interface MemoryIntel {
   prompts_count: number;
   prompt_names: string[];
   tiers: TierUsage[];
+  authorities: AuthorityMap[];
 }
 
 export interface EvalGateIntel {
@@ -225,6 +237,10 @@ export interface EvalGateIntel {
   law_vetoes: number;
   gemini_judged: number;
   judge_model: string;
+  learned_backend: string;
+  adjudications: number;
+  learned_active: number;
+  learned_vetoes: number;
 }
 
 export interface DatasetIntel {
@@ -291,6 +307,9 @@ export interface LessonProgressPoint {
   pass_rate: number;
   evidence_count: number;
   cum_lessons: number;
+  experiment_id: string | null;
+  experiment_dataset_id: string | null;
+  experiment_live: boolean;
 }
 
 export interface IntelligenceReport {
@@ -302,11 +321,67 @@ export interface IntelligenceReport {
   lesson_timeline: LessonProgressPoint[];
 }
 
+// ── Synthetic recovery benchmark (clearport/eval/benchmark.py) ──
+export interface BenchmarkSlice {
+  slice: string;
+  n: number;
+  accuracy: number;
+  false_auto_clear_rate: number;
+}
+
+export interface CalibrationBin {
+  lower: number;
+  upper: number;
+  n: number;
+  mean_confidence: number;
+  empirical_clean_rate: number;
+}
+
+export interface BenchmarkReport {
+  generated_at: string;
+  seed: number;
+  total: number;
+  resolution_accuracy: number;
+  false_auto_clear_rate: number;
+  missed_escalation_rate: number;
+  over_escalation_rate: number;
+  diagnosis_accuracy: number;
+  eval_gate_pass_rate: number;
+  auto_resolve_rate: number;
+  control_n: number;
+  false_rejection_rate: number;
+  slices: BenchmarkSlice[];
+  calibration: CalibrationBin[];
+  experiment_id: string | null;
+  experiment_dataset_id: string | null;
+  experiment_live: boolean;
+}
+
 export interface SeedHistoryResult {
   runs_made: number;
   lessons_promoted: number;
   drift_healed: string | null;
   metrics: Metrics;
+}
+
+// Result of POST /api/investigate/{run_id}: a deterministic explanation, plus a
+// live Phoenix MCP read-back of the verify-span annotations when available.
+export interface SpanAnnotation {
+  id?: string;
+  span_id?: string;
+  name?: string;
+  result?: { label?: string; score?: number; explanation?: string | null };
+  annotator_kind?: string;
+}
+
+export interface InvestigationResult {
+  run_id: string;
+  span_id: string | null;
+  mcp_used: boolean;
+  annotations: SpanAnnotation[];
+  decision: string;
+  eval_passed: boolean;
+  explanation: string;
 }
 
 // A declaration line as submitted by an operator.
@@ -361,6 +436,8 @@ export const api = {
   runs: () => req<RunSummary[]>("/api/runs"),
   run: (runId: string) => req<RunSummary>(`/api/runs/${runId}`),
   trace: (runId: string) => req<RunTrace>(`/api/runs/${runId}/trace`),
+  investigate: (runId: string) =>
+    req<InvestigationResult>(`/api/investigate/${runId}`, { method: "POST" }),
   approvals: () => req<RunSummary[]>("/api/approvals"),
   metrics: () => req<Metrics>("/api/metrics"),
   recover: (seedId: string) =>
@@ -398,10 +475,33 @@ export const api = {
   memoryLaw: () => req<LawRecord[]>("/api/memory/law"),
   memoryLessons: () => req<LessonRecord[]>("/api/memory/lessons"),
   intelligence: () => req<IntelligenceReport>("/api/intelligence"),
+  benchmark: (opts?: { refresh?: boolean; register?: boolean }) => {
+    const q = new URLSearchParams();
+    if (opts?.refresh) q.set("refresh", "true");
+    if (opts?.register) q.set("register", "true");
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return req<BenchmarkReport>(`/api/eval/benchmark${suffix}`);
+  },
   health: () => req<Health>("/health"),
 };
 
 export function phoenixTraceUrl(): string {
   // Deep link to the Phoenix project so judges can inspect real telemetry.
   return `${PHOENIX_BASE}/projects`;
+}
+
+// Deep link to a specific Phoenix experiment (the candidate-vs-baseline
+// comparison behind a promoted lesson). Falls back to the dataset's experiment
+// list, then the experiments index, depending on which ids we have.
+export function phoenixExperimentUrl(
+  datasetId?: string | null,
+  experimentId?: string | null,
+): string {
+  if (datasetId && experimentId) {
+    return `${PHOENIX_BASE}/datasets/${encodeURIComponent(datasetId)}/compare?experimentId=${encodeURIComponent(experimentId)}`;
+  }
+  if (datasetId) {
+    return `${PHOENIX_BASE}/datasets/${encodeURIComponent(datasetId)}/experiments`;
+  }
+  return `${PHOENIX_BASE}/experiments`;
 }

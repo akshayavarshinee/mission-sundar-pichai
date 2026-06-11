@@ -71,3 +71,25 @@ def test_low_confidence_raises_confidence_component() -> None:
     # 1 - confidence; a zero-confidence verdict maxes the confidence component
     assert result.confidence_component == 1.0
     assert result.total_score >= W_CONFIDENCE * 1.0
+
+
+def test_expected_error_cost_escalates_midvalue_lowconfidence() -> None:
+    # Below the $2,500 hard line but the expected cost of being wrong —
+    # (1 − confidence) × value — is high, so a passing fix still goes to a human.
+    rejection, patch = _patch("S2")
+    patch.patched_payload.items[0].value = 1500.0  # under hard line
+    result = assess(rejection, patch, _verdict(True, 0.6))
+    # expected cost = (1 - 0.6) * 1500 = 600 > $400 ceiling
+    assert result.expected_error_cost == 600.0
+    assert result.decision is Decision.HUMAN
+    assert any("expected error cost" in r for r in result.reasons)
+
+
+def test_expected_error_cost_allows_confident_midvalue() -> None:
+    # Same parcel, high confidence -> expected cost low -> stays AUTO.
+    rejection, patch = _patch("S2")
+    patch.patched_payload.items[0].value = 1500.0
+    result = assess(rejection, patch, _verdict(True, 0.97))
+    # expected cost = (1 - 0.97) * 1500 = 45 < $400 ceiling
+    assert result.expected_error_cost == 45.0
+    assert result.decision is Decision.AUTO

@@ -19,10 +19,12 @@ RUN apt-get update \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Node 20 for the @arizeai/phoenix-mcp server (the *active* half of the Arize
-# integration, launched on demand via npx by the ADK toolset and the MCP
-# handshake). Copied from the official slim image to keep the Python base small,
-# then the MCP package is pre-warmed so the first agent call at runtime does not
-# pay the npx download cost.
+# integration, launched on demand via npx for three uses: the startup MCP
+# handshake, the ADK agent toolset, and the on-demand /api/investigate read-back
+# of a run's verify-span annotations). The per-call recovery hot path stays on
+# the in-process arize-phoenix-client (no npx), so request latency is unaffected.
+# Copied from the official slim image to keep the Python base small, then the MCP
+# package is pre-warmed so the first investigate call does not pay the npx cost.
 COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \

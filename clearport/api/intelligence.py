@@ -20,6 +20,8 @@ trace steps, and self-heal markers from ``patch.tool_calls_used``.
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field
 
 from clearport.api.store import RecoveryRun, RunStatus
@@ -29,6 +31,15 @@ from clearport.schemas import utcnow
 _RESOLVED = {RunStatus.AUTO_RESOLVED, RunStatus.HUMAN_APPROVED, RunStatus.HUMAN_CORRECTED}
 _MEMORY_LESSON_TOOL = "memory-lesson"
 _CLASSIFIER_TOOL = "classify_hs"
+
+# Synthetic experiment ids come from ``new_id("exp")`` -> ``exp_<12 hex>``. A real
+# Phoenix experiment id is a server GlobalID, so anything NOT matching this is a
+# genuine, UI-visible Phoenix experiment.
+_SYNTHETIC_EXP_RE = re.compile(r"^exp_[0-9a-f]{12}$")
+
+
+def _is_real_experiment(experiment_id: str | None) -> bool:
+    return bool(experiment_id) and _SYNTHETIC_EXP_RE.match(experiment_id) is None
 
 
 # ── response models ──────────────────────────────────────────────────────────
@@ -41,6 +52,17 @@ class TierUsage(BaseModel):
     detail: list[str] = Field(default_factory=list)
 
 
+class AuthorityMap(BaseModel):
+    """One rejection class → the recognized authority that governs it."""
+
+    error_type: str
+    label: str
+    regime: str
+    authority: str
+    short: str
+    basis: str
+
+
 class MemoryIntel(BaseModel):
     law_count: int
     episodic_total: int
@@ -51,6 +73,7 @@ class MemoryIntel(BaseModel):
     prompts_count: int
     prompt_names: list[str]
     tiers: list[TierUsage]
+    authorities: list[AuthorityMap] = Field(default_factory=list)
 
 
 class EvalGateIntel(BaseModel):
@@ -61,6 +84,14 @@ class EvalGateIntel(BaseModel):
     law_vetoes: int
     gemini_judged: int
     judge_model: str
+    # The adaptive (learned) judge — the part of the gate that improves with
+    # experience. ``adjudications`` is the size of the corpus it learns from;
+    # ``learned_active``/``learned_vetoes`` count runs where it had an opinion /
+    # vetoed an otherwise-clean auto-clear (a destination rule the carrier missed).
+    learned_backend: str = "off"
+    adjudications: int = 0
+    learned_active: int = 0
+    learned_vetoes: int = 0
 
 
 class DatasetIntel(BaseModel):
@@ -127,6 +158,9 @@ class LessonProgressPoint(BaseModel):
     pass_rate: float
     evidence_count: int
     cum_lessons: int
+    experiment_id: str | None = None
+    experiment_dataset_id: str | None = None
+    experiment_live: bool = False
 
 
 class IntelligenceReport(BaseModel):
@@ -169,12 +203,23 @@ def _phoenix_live() -> bool:
     )
 
 
+def _learned_backend() -> str:
+    """How the adaptive judge currently learns: ``llm`` few-shot (live), instance-
+    based ``knn`` (offline default), or ``off`` when learned tightening is disabled."""
+    if not settings.learned_judge_enabled:
+        return "off"
+    from clearport import llm
+
+    return "llm" if llm.is_live() else "knn"
+
+
 # ── main entry ─────────────────────────────────────────────────────────────--
 def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — ClearPortService
     from clearport.arize.mcp_client import REQUIRED_TOOLS
     from clearport.memory.law_store import LawStore
     from clearport.memory.lessons import LessonsStore
     from clearport.memory.prompts import DEFAULT_PROMPTS
+    from clearport.seeds.kb.law import ERROR_AUTHORITIES
 
     runs: list[RecoveryRun] = service.list_runs()  # chronological (store sorts)
 
@@ -194,6 +239,25 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
 
     prompt_names = list(DEFAULT_PROMPTS.keys())
 
+    # The taxonomy → cited-authority mapping (seeds/kb/law.py): the legal basis
+    # each recoverable rejection class is grounded in. Surfaced in tier ①.
+    authorities = [
+        AuthorityMap(
+            error_type=error_type.value,
+            label=meta["label"],
+            regime=meta["regime"],
+            authority=meta["authority"],
+            short=meta["short"],
+            basis=meta["basis"],
+        )
+        for error_type, meta in ERROR_AUTHORITIES.items()
+    ]
+    # Distinct authority families, in mapping order, for the tier-① chips.
+    law_authorities: list[str] = []
+    for a in authorities:
+        if a.short not in law_authorities:
+            law_authorities.append(a.short)
+
     memory = MemoryIntel(
         law_count=law_count,
         episodic_total=len(episodic_rows),
@@ -210,7 +274,7 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
                 backend=f"pgvector ({settings.clearport_vector_backend})",
                 count=law_count,
                 purpose="Grounds every diagnosis and holds a hard veto over learned experience.",
-                detail=["HTS headings", "CBP CROSS rulings", "FTR §30.37 EEI"],
+                detail=law_authorities,
             ),
             TierUsage(
                 tier="②",
@@ -241,12 +305,14 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
                 detail=prompt_names,
             ),
         ],
+        authorities=authorities,
     )
 
     # ── per-run progression + eval-gate aggregation ─────────────────────
     progression: list[ProgressionPoint] = []
     spans = 0
     eval_total = eval_passed = law_vetoes = gemini_judged = 0
+    learned_active = learned_vetoes = 0
     judge_model = "deterministic-policy"
     cum_auto = cum_resolved = 0
     cum_demurrage = 0.0
@@ -260,9 +326,22 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
         if res.verdict.passed:
             eval_passed += 1
         law_vetoes += len(res.vetoed_lesson_ids)
-        if res.verdict.judge_model and res.verdict.judge_model != "deterministic-policy":
+        # The phoenix-evals model judgement, isolated from any learned suffix the
+        # gate appends (e.g. "<model>+learned:knn") so a pure offline kNN veto is
+        # never miscounted as a Gemini judgement.
+        base_model = res.verdict.judge_model.split("+learned:")[0]
+        if base_model and base_model != "deterministic-policy":
             gemini_judged += 1
+        if res.verdict.judge_model and res.verdict.judge_model != "deterministic-policy":
             judge_model = res.verdict.judge_model
+
+        # The learned judge's contribution: it had an opinion (not abstain) and,
+        # when confident, vetoed a carrier-clean auto-clear on learned precedent.
+        learned_verdict = res.verdict.learned
+        if learned_verdict is not None and learned_verdict.vote != "abstain":
+            learned_active += 1
+            if learned_verdict.is_veto:
+                learned_vetoes += 1
 
         tools = res.patch.tool_calls_used
         self_healed = _MEMORY_LESSON_TOOL in tools
@@ -313,6 +392,10 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
         law_vetoes=law_vetoes,
         gemini_judged=gemini_judged,
         judge_model=judge_model,
+        learned_backend=_learned_backend(),
+        adjudications=service.loop.adjudications.count(),
+        learned_active=learned_active,
+        learned_vetoes=learned_vetoes,
     )
 
     # ── self-heal pairs (first vs repeat) per memory key ────────────────
@@ -352,8 +435,16 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
                 pass_rate=lesson.pass_rate,
                 evidence_count=lesson.evidence_count,
                 cum_lessons=n,
+                experiment_id=lesson.experiment_id,
+                experiment_dataset_id=lesson.experiment_dataset_id,
+                experiment_live=_is_real_experiment(lesson.experiment_id),
             )
         )
+
+    # Experiments won = promotions backed by a genuine, UI-visible Phoenix
+    # experiment (distinct from lessons_promoted, which counts every promoted
+    # lesson including those gated by the offline deterministic experiment).
+    experiments_won = sum(1 for lesson in lessons if _is_real_experiment(lesson.experiment_id))
 
     arize = ArizeIntel(
         live=_phoenix_live(),
@@ -363,7 +454,7 @@ def compute_intelligence(service) -> IntelligenceReport:  # noqa: ANN001 — Cle
         traces_emitted=len(runs),
         spans_emitted=spans,
         eval_gate=eval_gate,
-        experiments_won=lessons_count,
+        experiments_won=experiments_won,
         lessons_promoted=lessons_count,
         datasets=[
             DatasetIntel(

@@ -40,10 +40,14 @@ class Executor:
         )
 
     def finalize(
-        self, rejection: RejectionEvent, patch: PatchProposal, *, buy: bool
+        self, rejection: RejectionEvent, patch: PatchProposal, *, buy: bool, live: bool = True
     ) -> ExecutionResult:
-        """Validate the patched payload; optionally buy the cheapest label."""
-        if self._live(rejection):
+        """Validate the patched payload; optionally buy the cheapest label.
+
+        ``live=False`` forces the offline synthetic surface (used by the dry-run
+        benchmark) so an evaluation never touches the live carrier.
+        """
+        if live and self._live(rejection):
             result = self._finalize_live(rejection, patch, buy=buy)
         else:
             result = self._finalize_offline(patch, buy=buy)

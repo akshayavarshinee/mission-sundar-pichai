@@ -117,3 +117,61 @@ def get_tracer(name: str = "clearport"):
         _TRACING_FAILED = True
         logger.warning("tracing.unavailable_null", error=str(exc))
         return _NullTracer()
+
+
+def span_id_hex(span) -> str | None:  # noqa: ANN001 — OTel Span or _NullSpan
+    """Return the 16-hex OTel span id, or ``None`` for a no-op/invalid span.
+
+    Used to attach an eval-verdict annotation to the exact ``verify`` span, so
+    the verdict is a first-class, queryable artifact in the Phoenix UI.
+    """
+    try:
+        ctx = span.get_span_context()
+        sid = getattr(ctx, "span_id", 0)
+        return format(sid, "016x") if sid else None
+    except Exception:  # noqa: BLE001 — _NullSpan offline has no context
+        return None
+
+
+def flush_tracing() -> None:
+    """Best-effort flush of pending spans so they land in Phoenix promptly.
+
+    Called before writing a span annotation (which references a span by id) so
+    the target span is more likely to already be ingested. Never raises.
+    """
+    provider = _TRACER_PROVIDER
+    if provider is None:
+        return
+    try:
+        provider.force_flush()
+    except Exception as exc:  # noqa: BLE001 — flushing is best-effort
+        logger.debug("tracing.flush_failed", error=str(exc))
+
+
+def span_id_hex(span) -> str | None:  # noqa: ANN001 — OTel Span or _NullSpan
+    """Return the 16-hex OTel span id, or ``None`` for a no-op/invalid span.
+
+    Used to attach an eval-verdict annotation to the exact ``verify`` span, so
+    the verdict is a first-class, queryable artifact in the Phoenix UI.
+    """
+    try:
+        ctx = span.get_span_context()
+        sid = getattr(ctx, "span_id", 0)
+        return format(sid, "016x") if sid else None
+    except Exception:  # noqa: BLE001 — _NullSpan offline has no context
+        return None
+
+
+def flush_tracing() -> None:
+    """Best-effort flush of pending spans so they land in Phoenix promptly.
+
+    Called before writing a span annotation (which references a span by id) so
+    the target span is more likely to already be ingested. Never raises.
+    """
+    provider = _TRACER_PROVIDER
+    if provider is None:
+        return
+    try:
+        provider.force_flush()
+    except Exception as exc:  # noqa: BLE001 — flushing is best-effort
+        logger.debug("tracing.flush_failed", error=str(exc))

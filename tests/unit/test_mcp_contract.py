@@ -69,3 +69,47 @@ def test_required_tools_match_prompt_backend_calls() -> None:
     # handshake validates the surface the code actually depends on (not a stale
     # alias). See clearport.memory.prompts.get_prompt / upsert_prompt.
     assert {"get-prompt-by-identifier", "upsert-prompt"} <= REQUIRED_TOOLS
+
+
+def test_parse_annotations_extracts_from_text_block() -> None:
+    from clearport.arize.mcp_client import _parse_annotations
+
+    class _Block:
+        text = (
+            '{"annotations": [{"id": "a1", "span_id": "s1", "name": "eval_gate", '
+            '"result": {"label": "pass", "score": 0.8}}], "nextCursor": null}'
+        )
+
+    class _Result:
+        structuredContent = None
+        content = [_Block()]
+
+    annotations = _parse_annotations(_Result())
+    assert annotations and annotations[0]["name"] == "eval_gate"
+
+
+def test_investigate_span_sync_noop_when_disabled(monkeypatch) -> None:
+    from clearport.arize import mcp_client
+    from clearport.config import settings
+
+    monkeypatch.setattr(settings, "clearport_mcp_enabled", "off", raising=False)
+    assert mcp_client.investigate_span_sync("deadbeefdeadbeef") is None
+
+
+def test_investigate_span_sync_reads_back_via_mcp(monkeypatch) -> None:
+    # Force MCP on and stub the async tool call so no npx/Node server is needed:
+    # the sync wrapper must run it and surface the parsed annotations.
+    from clearport.arize import mcp_client
+    from clearport.config import settings
+
+    monkeypatch.setattr(settings, "clearport_mcp_enabled", "on", raising=False)
+
+    async def _fake_get(span_id: str):
+        return [{"id": "a1", "span_id": span_id, "name": "eval_gate",
+                 "result": {"label": "pass", "score": 0.82}}]
+
+    monkeypatch.setattr(mcp_client, "get_span_annotations", _fake_get)
+    out = mcp_client.investigate_span_sync("deadbeefdeadbeef")
+    assert out is not None
+    assert out["tool"] == "get-span-annotations"
+    assert out["annotations"][0]["name"] == "eval_gate"

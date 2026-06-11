@@ -13,6 +13,7 @@ from clearport.agents.orchestrator import RecoveryLoop
 from clearport.api.events import EventBus
 from clearport.api.metrics import Metrics, compute_metrics
 from clearport.api.store import RecoveryRun, RunStatus, RunStore
+from clearport.arize.annotations import annotate_eval
 from clearport.arize.drift import DriftMonitor
 from clearport.config import settings
 from clearport.memory.lessons import LessonsStore
@@ -81,7 +82,7 @@ class ClearPortService:
         )
         shipment = SeedShipment(
             id=new_id("ship"),
-            persona=persona or "Submitted shipment",
+            persona=persona or shipper_name or "Submitted shipment",
             note="",
             lane=lane or LANE_IN_US,
             from_address=from_address,
@@ -99,6 +100,12 @@ class ClearPortService:
 
     def submit_rejection(self, rejection: RejectionEvent) -> RecoveryRun:
         result = self.loop.run(rejection)
+        # Write the eval verdict back onto its Phoenix verify-span as an
+        # annotation (the eval conscience, visible in the Phoenix UI). Best-
+        # effort and live-only; offline this is a no-op.
+        ann_id = annotate_eval(result.verify_span_id, result.verdict)
+        if ann_id:
+            result.verdict.phoenix_annotation_id = ann_id
         run = self.store.add(RecoveryRun.from_result(result))
         self._publish_run("run_created", run)
         self._publish_metrics()
@@ -112,6 +119,55 @@ class ClearPortService:
 
     def get_run(self, run_id: str) -> RecoveryRun | None:
         return self.store.get(run_id)
+
+    def investigate(self, run_id: str) -> dict | None:
+        """Explain a run, re-grounding the eval verdict from Phoenix via MCP.
+
+        Always returns a deterministic narrative built from the run's own state;
+        when Phoenix MCP is reachable it additionally reads the verify-span's
+        annotations back out of Phoenix (a genuine runtime MCP exercise) and
+        folds them into the explanation. Returns ``None`` if the run is unknown.
+        """
+        from clearport.arize.mcp_client import investigate_span_sync
+
+        run = self.store.get(run_id)
+        if run is None:
+            return None
+        r = run.result
+        explanation = self._explain_run(r)
+
+        mcp = investigate_span_sync(r.verify_span_id) if r.verify_span_id else None
+        annotations = (mcp or {}).get("annotations") or []
+        if annotations:
+            shown = ", ".join(
+                f"{a.get('name')}={(a.get('result') or {}).get('label')}"
+                f"@{(a.get('result') or {}).get('score')}"
+                for a in annotations[:3]
+            )
+            explanation += (
+                f" Phoenix MCP read back {len(annotations)} annotation(s) on the "
+                f"verify span ({shown})."
+            )
+        return {
+            "run_id": run.id,
+            "span_id": r.verify_span_id,
+            "mcp_used": bool(mcp),
+            "annotations": annotations,
+            "decision": r.risk.decision.value,
+            "eval_passed": r.verdict.passed,
+            "explanation": explanation,
+        }
+
+    @staticmethod
+    def _explain_run(r) -> str:  # noqa: ANN001 — LoopResult
+        verdict = "PASSED" if r.verdict.passed else "VETOED"
+        return (
+            f"This run handled a {r.rejection.normalized_error_type.value} rejection "
+            f"caught by {r.rejection.source.label}. Diagnosis: {r.diagnosis.root_cause} "
+            f"(confidence {r.diagnosis.confidence:.2f}). The eval-gate {verdict} the "
+            f"patch at confidence {r.verdict.confidence:.2f} — {r.verdict.rationale} "
+            f"Risk tier decided {r.risk.decision.value}: {'; '.join(r.risk.reasons)}."
+        )
 
     # ── demo hygiene ─────────────────────────────────────────────────────
     def clear(self) -> None:
