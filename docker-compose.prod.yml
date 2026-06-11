@@ -72,6 +72,12 @@ services:
       - PHOENIX_HOST=http://phoenix:6006
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
       - PHOENIX_PROJECT=clearport
+      # ── Phoenix active half (in-process arize-phoenix-client, not per-call npx) ──
+      # Episodic tier ② outcomes are mirrored into a real Phoenix dataset (visible
+      # in the Phoenix UI) and the promotion gate runs a real Phoenix experiment.
+      - CLEARPORT_EPISODIC_BACKEND=phoenix-client
+      - PHOENIX_DATASET=clearport-outcomes
+      - PHOENIX_BASELINE_DATASET=clearport-accepted-baseline
       # ── Postgres + pgvector memory (tiers ① law / ③ lessons) ──
       - DATABASE_URL=postgresql+psycopg://clearport:${POSTGRES_PASSWORD:-clearport}@db:5432/clearport
       - CLEARPORT_VECTOR_BACKEND=pg

@@ -27,10 +27,35 @@ def new_id(prefix: str) -> str:
 
 # ── enumerations (mirror EasyPost CustomsInfo semantics where relevant) ──────
 class Source(str, Enum):
-    """Which validation surface produced a rejection."""
+    """Which validation surface actually produced a rejection.
+
+    Provenance is load-bearing for trust: we never let a rejection caught by our
+    own rules masquerade as a carrier rejection.
+
+    * ``EASYPOST`` — a real carrier rejection from the EasyPost API (CustomsInfo
+      or Shipment creation failed).
+    * ``HTS`` — the declared HS code failed validation against the external USITC
+      Harmonized Tariff Schedule.
+    * ``COMPLIANCE`` — ClearPort's own compliance rules engine caught a violation
+      the carrier accepted (e.g. NOEEI at/above the FTR §30.37 $2,500 threshold)
+      or the offline equivalent of a carrier rule.
+    * ``OVERLAY`` — the destination regional rule overlay (drift surface).
+    """
 
     EASYPOST = "easypost"
+    HTS = "hts"
+    COMPLIANCE = "compliance"
     OVERLAY = "overlay"
+
+    @property
+    def label(self) -> str:
+        """Human-readable surface name for the UI's 'caught by' provenance."""
+        return {
+            Source.EASYPOST: "EasyPost carrier API",
+            Source.HTS: "USITC HTS tariff schedule",
+            Source.COMPLIANCE: "ClearPort Compliance Engine",
+            Source.OVERLAY: "Destination rule overlay",
+        }[self]
 
 
 class ContentsType(str, Enum):
@@ -245,6 +270,7 @@ class Diagnosis(BaseModel):
     retrieved_lessons: list[LessonRef] = Field(default_factory=list)
     precedent_examples: list[PrecedentExample] = Field(default_factory=list)
     confidence: float = 0.0
+    confidence_basis: str = ""
 
 
 class FieldDiff(BaseModel):
@@ -281,6 +307,7 @@ class EvalVerdict(BaseModel):
     judge_model: str
     passed: bool
     confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    confidence_basis: str = ""
     rubric: EvalRubric = Field(default_factory=EvalRubric)
     rationale: str = ""
     phoenix_annotation_id: str | None = None
@@ -294,6 +321,19 @@ class RiskAssessment(BaseModel):
     hard_line_triggered: bool
     decision: Decision
     reasons: list[str] = Field(default_factory=list)
+
+
+class TraceStep(BaseModel):
+    """One step of the recovery loop, with its measured wall-clock duration.
+
+    Mirrors the OpenTelemetry span emitted for the same step (recall, diagnose,
+    patch, verify, decide, act, learn) so the dashboard can render a real trace
+    waterfall without round-tripping to Phoenix.
+    """
+
+    name: str
+    duration_ms: float
+    detail: str = ""
 
 
 class Outcome(BaseModel):

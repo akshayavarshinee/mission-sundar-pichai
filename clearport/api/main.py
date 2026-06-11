@@ -16,7 +16,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from clearport.api.store import RecoveryRun
 from clearport.config import settings
-from clearport.schemas import CustomsPayload
+from clearport.schemas import CustomsPayload, Lane
 from clearport.service import ApprovalError, get_service
 from clearport.seeds.shipments import all_seeds
 
@@ -59,26 +59,69 @@ class CorrectionAction(BaseModel):
     note: str | None = None
 
 
+class ShipmentSubmission(BaseModel):
+    payload: CustomsPayload
+    origin: str = "IN"
+    dest: str = "US"
+    persona: str | None = None
+    shipper_name: str | None = None
+
+
 def _run_summary(run: RecoveryRun) -> dict:
     r = run.result
+    items = r.rejection.payload.items
+    title = items[0].description if items else (run.seed_id or "Shipment")
     return {
         "run_id": run.id,
         "seed_id": run.seed_id,
         "status": run.status.value,
+        "created_at": run.created_at.isoformat(),
+        "resolved_at": run.resolved_at.isoformat() if run.resolved_at else None,
+        "title": title,
+        "persona": r.rejection.persona,
+        "lane": str(r.rejection.lane),
+        "origin": r.rejection.lane.origin,
+        "dest": r.rejection.lane.dest,
+        "contents_type": r.rejection.payload.contents_type.value,
+        "items": [
+            {
+                "description": i.description,
+                "quantity": i.quantity,
+                "value": i.value,
+                "hs_tariff_number": i.hs_tariff_number,
+                "origin_country": i.origin_country,
+            }
+            for i in items
+        ],
         "error_type": r.rejection.normalized_error_type.value,
+        "raw_error": r.rejection.raw_error.message,
         "customs_value": r.rejection.customs_value,
+        "rejection_source": r.rejection.source.value,
+        "caught_by": r.rejection.source.label,
+        "human_note": run.human_note,
         "root_cause": r.diagnosis.root_cause,
+        "declaration": r.patch.patched_payload.model_dump(mode="json"),
+        "diagnosis": {
+            "confidence": r.diagnosis.confidence,
+            "confidence_basis": r.diagnosis.confidence_basis,
+        },
         "field_diff": [d.model_dump() for d in r.patch.field_diff],
         "rationale": r.patch.rationale,
         "eval": {
             "passed": r.verdict.passed,
             "confidence": r.verdict.confidence,
+            "confidence_basis": r.verdict.confidence_basis,
             "rubric": r.verdict.rubric.model_dump(),
             "model": r.verdict.judge_model,
         },
         "risk": {
             "decision": r.risk.decision.value,
             "score": r.risk.total_score,
+            "components": {
+                "value": r.risk.value_component,
+                "danger": r.risk.danger_component,
+                "confidence": r.risk.confidence_component,
+            },
             "hard_line": r.risk.hard_line_triggered,
             "reasons": r.risk.reasons,
         },
@@ -120,6 +163,20 @@ def recover(seed_id: str) -> dict:
     return _run_summary(run)
 
 
+@app.post("/api/shipments")
+def submit_shipment(submission: ShipmentSubmission) -> dict:
+    """Run an operator-submitted declaration through the recovery loop."""
+    run = get_service().submit_custom(
+        submission.payload,
+        lane=Lane(origin=submission.origin, dest=submission.dest),
+        persona=submission.persona,
+        shipper_name=submission.shipper_name,
+    )
+    if run is None:
+        return {"status": "ACCEPTED", "note": "Declaration is clean — no recovery needed."}
+    return _run_summary(run)
+
+
 @app.get("/api/runs")
 def runs() -> list[dict]:
     return [_run_summary(r) for r in get_service().list_runs()]
@@ -131,6 +188,27 @@ def run_detail(run_id: str) -> dict:
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
     return _run_summary(run)
+
+
+@app.get("/api/runs/{run_id}/trace")
+def run_trace(run_id: str) -> dict:
+    """Per-step durations of the recovery loop for the trace-waterfall view.
+
+    These are the same spans exported to Phoenix, captured locally so the
+    dashboard can render the waterfall without round-tripping to Phoenix.
+    """
+    run = get_service().get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    steps = run.result.trace_steps
+    total = round(sum(s.duration_ms for s in steps), 3)
+    return {
+        "run_id": run.id,
+        "rejection_id": run.result.rejection.id,
+        "recovery_seconds": run.result.recovery_seconds,
+        "total_ms": total,
+        "steps": [s.model_dump() for s in steps],
+    }
 
 
 @app.get("/api/approvals")
@@ -165,6 +243,39 @@ def correct(run_id: str, action: CorrectionAction) -> dict:
 @app.get("/api/metrics")
 def metrics() -> dict:
     return get_service().metrics().model_dump()
+
+
+@app.get("/api/memory/law")
+def memory_law() -> list[dict]:
+    """Browse memory tier ① — the grounded customs-law citation corpus."""
+    from clearport.memory.law_store import LawStore
+
+    store = LawStore()
+    store.bootstrap()
+    return [
+        {
+            "id": r.id,
+            "source": r.metadata.get("source", "LAW"),
+            "ref": r.metadata.get("ref", "?"),
+            "hs_chapter": r.metadata.get("hs_chapter"),
+            "text": r.text,
+        }
+        for r in store.store.all_records()
+    ]
+
+
+@app.get("/api/memory/lessons")
+def memory_lessons() -> list[dict]:
+    """Browse memory tier ③ — lessons promoted only via a winning experiment."""
+    from clearport.memory.lessons import LessonsStore
+
+    return [lesson.model_dump(mode="json") for lesson in LessonsStore().all()]
+
+
+@app.get("/api/memory/episodic")
+def memory_episodic() -> list[dict]:
+    """Browse memory tier ② — the episodic outcome record (self-healing log)."""
+    return get_service().loop.episodic.get_examples()
 
 
 @app.post("/api/learn")

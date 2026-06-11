@@ -47,10 +47,98 @@ def _accepted_rate(rows: list[dict]) -> float:
     return accepted / len(rows)
 
 
+def _experiment_id_of(ran) -> str | None:  # noqa: ANN001
+    if isinstance(ran, dict):
+        return ran.get("experiment_id") or ran.get("id")
+    return getattr(ran, "experiment_id", None) or getattr(ran, "id", None)
+
+
+def _register_phoenix_experiment(
+    memory_key: str,
+    error_type: NormalizedErrorType,
+    candidate_rows: list[dict],
+    baseline: float,
+    candidate: float,
+    client=None,  # noqa: ANN001 — phoenix.client.Client, injected in tests
+) -> str | None:
+    """Register a genuine Phoenix experiment for this promotion (opt-in).
+
+    Gated behind ``CLEARPORT_PHOENIX_EXPERIMENTS=on`` because Phoenix's
+    experiment runner requires a reachable server even in dry-run; offline this
+    is skipped entirely so the deterministic promotion path never blocks. When
+    enabled it runs the candidate corrections through Phoenix's experiment engine
+    and returns the real ``experiment_id`` (visible in the Phoenix UI).
+    """
+    if (settings.clearport_phoenix_experiments or "off").lower() != "on":
+        return None
+    if not candidate_rows:
+        return None
+    try:
+        import contextlib
+        import io
+
+        from phoenix.client.resources.datasets import Dataset
+
+        examples = [
+            {
+                "id": r.get("id", f"cand-{i}"),
+                "input": r.get("input", {}) or {},
+                "output": r.get("output", {}) or {},
+                "metadata": r.get("metadata", {}) or {},
+            }
+            for i, r in enumerate(candidate_rows)
+        ]
+        dataset = Dataset.from_dict(
+            {
+                "id": memory_key,
+                "name": f"clearport-promotion::{memory_key}",
+                "version_id": "promotion",
+                "examples": examples,
+            }
+        )
+
+        def task(example):  # noqa: ANN001, ANN202
+            return example["output"].get("accepted")
+
+        def accepted(output) -> float:  # noqa: ANN001
+            return 1.0 if str(output).lower() == "true" else 0.0
+
+        if client is None:
+            from phoenix.client import Client
+
+            client = Client(base_url=settings.phoenix_host, api_key=settings.phoenix_api_key)
+
+        # Phoenix prints a unicode summary/progress banner; redirect it so it
+        # neither pollutes logs nor trips Windows console encoding.
+        with contextlib.redirect_stdout(io.StringIO()):
+            ran = client.experiments.run_experiment(
+                dataset=dataset,
+                task=task,
+                evaluators={"accepted": accepted},
+                experiment_name=f"promotion-{error_type.value}",
+                experiment_metadata={
+                    "memory_key": memory_key,
+                    "baseline_score": baseline,
+                    "candidate_score": candidate,
+                },
+                print_summary=False,
+            )
+        exp_id = _experiment_id_of(ran)
+        if exp_id:
+            logger.info(
+                "experiment.phoenix_registered", memory_key=memory_key, experiment_id=exp_id
+            )
+        return exp_id
+    except Exception as exc:  # noqa: BLE001 — never let telemetry break promotion
+        logger.warning("experiment.phoenix_failed", memory_key=memory_key, error=str(exc))
+        return None
+
+
 def run_experiment(
     memory_key: str,
     error_type: NormalizedErrorType,
     episodic: EpisodicMemory | None = None,
+    phoenix_client=None,  # noqa: ANN001 — test seam for the Phoenix experiment runner
 ) -> ExperimentResult:
     episodic = episodic or get_episodic()
     rows = episodic.get_examples(where={"memory_key": memory_key})
@@ -63,8 +151,12 @@ def run_experiment(
     evidence = len(candidate_rows)
     passed = candidate >= baseline + margin and evidence >= settings.clearport_promotion_min_evidence
 
+    experiment_id = _register_phoenix_experiment(
+        memory_key, error_type, candidate_rows, round(baseline, 3), round(candidate, 3), phoenix_client
+    ) or new_id("exp")
+
     result = ExperimentResult(
-        experiment_id=new_id("exp"),
+        experiment_id=experiment_id,
         memory_key=memory_key,
         error_type=error_type.value,
         baseline_score=round(baseline, 3),
@@ -79,5 +171,6 @@ def run_experiment(
         baseline=result.baseline_score,
         candidate=result.candidate_score,
         passed=passed,
+        experiment_id=experiment_id,
     )
     return result

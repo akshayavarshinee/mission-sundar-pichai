@@ -23,6 +23,7 @@ from clearport.config import settings
 from clearport.schemas import (
     Address,
     CustomsPayload,
+    NormalizedErrorType,
     ParcelSpec,
     RawError,
     Source,
@@ -139,6 +140,25 @@ class EasyPostClient:
         items = [self.client.customs_item.create(**a) for a in self._customs_item_args(payload)]
         return self.client.customs_info.create(**self._customs_info_args(payload, items))
 
+    @staticmethod
+    def _first_hts_miss(payload: CustomsPayload) -> tuple[str, str] | None:
+        """Return the first (code, detail) whose HS number is a definitive live
+        miss against the USITC schedule, or ``None`` if all codes are real (or
+        could not be checked online — in which case we never fail closed)."""
+        from clearport.validation.hts_client import validate_hs
+
+        for item in payload.items:
+            lookup = validate_hs(item.hs_tariff_number)
+            if lookup.checked_live and not lookup.exists_in_schedule:
+                return (
+                    item.hs_tariff_number or "",
+                    (
+                        f"HS code {item.hs_tariff_number!r} for '{item.description}' "
+                        "is not a valid line in the live USITC HTS schedule."
+                    ),
+                )
+        return None
+
     def validate(
         self,
         payload: CustomsPayload,
@@ -186,6 +206,7 @@ class EasyPostClient:
             )
             return ValidationResult(
                 ok=False,
+                source=Source.COMPLIANCE,
                 customs_info_id=customs_info.id,
                 shipment_id=shipment.id,
                 rates_count=len(rates),
@@ -196,6 +217,31 @@ class EasyPostClient:
                         f"acceptance: declaration violates rule {violation.value}"
                     ),
                     field=None,
+                ),
+            )
+
+        # USITC HTS backstop: a code can be structurally valid (6/10 digits) yet
+        # not exist in the live Harmonized Tariff Schedule. We only reject on a
+        # *definitive* live miss so an offline run never produces a false HS error.
+        hts_miss = self._first_hts_miss(payload)
+        if hts_miss is not None:
+            code, detail = hts_miss
+            logger.info(
+                "easypost.hts_backstop.rejected",
+                customs_info_id=customs_info.id,
+                shipment_id=shipment.id,
+                hs=code,
+            )
+            return ValidationResult(
+                ok=False,
+                source=Source.HTS,
+                customs_info_id=customs_info.id,
+                shipment_id=shipment.id,
+                rates_count=len(rates),
+                raw_error=RawError(
+                    code=NormalizedErrorType.HS_INVALID.value,
+                    message=detail,
+                    field="hs_tariff_number",
                 ),
             )
 
@@ -245,4 +291,6 @@ def synthetic_validation(payload: CustomsPayload) -> ValidationResult:
     )
     # round-trip through normalize_error to mirror the live path exactly
     _ = normalize_error(raw, payload)
-    return ValidationResult(ok=False, raw_error=raw)
+    # Offline, every rule is enforced by ClearPort's own compliance engine, so it
+    # is labeled as such rather than impersonating a live carrier rejection.
+    return ValidationResult(ok=False, source=Source.COMPLIANCE, raw_error=raw)

@@ -26,6 +26,9 @@ class HSClassification(BaseModel):
     confidence: float
     source: str  # "gemini" | "kb-keyword" | "none"
     rationale: str = ""
+    hts_verified: bool = False
+    official_description: str = ""
+    general_duty: str = ""
 
 
 # Curated keyword -> (HTS 6-digit, description). Mirrors seeds/kb/law.py headings.
@@ -83,7 +86,7 @@ def classify_hs(description: str, citations: list[LawCitation] | None = None) ->
     try:
         result = _gemini_classify(description, citations)
         if result.code and hs_is_valid(result.code):
-            return result
+            return _verify_against_hts(result)
         logger.info("classifier.gemini_invalid_fallback", code=result.code)
     except llm.LLMUnavailable:
         pass
@@ -95,4 +98,37 @@ def classify_hs(description: str, citations: list[LawCitation] | None = None) ->
     if fallback.code and not hs_is_valid(fallback.code):
         fallback.code = None
         fallback.confidence = 0.2
-    return fallback
+    return _verify_against_hts(fallback)
+
+
+def _verify_against_hts(classification: HSClassification) -> HSClassification:
+    """Confirm a classified code exists in the real USITC HTS schedule.
+
+    A live confirmation attaches the official description + duty and marks the
+    code ``hts_verified``; a *definitive* live miss (the schedule says the
+    subheading does not exist) invalidates the code so the loop escalates rather
+    than shipping a plausible-but-fake tariff number. Offline, the structural
+    code is left untouched.
+    """
+    if not classification.code:
+        return classification
+
+    from clearport.validation.hts_client import validate_hs
+
+    lookup = validate_hs(classification.code)
+    if lookup.checked_live and not lookup.exists_in_schedule:
+        logger.info("classifier.hts_unverified", code=classification.code)
+        classification.code = None
+        classification.confidence = min(classification.confidence, 0.2)
+        classification.rationale += (
+            " Rejected: code not found in the live USITC HTS schedule."
+        )
+        return classification
+
+    if lookup.exists_in_schedule:
+        classification.hts_verified = lookup.checked_live
+        classification.official_description = lookup.description
+        classification.general_duty = lookup.general_duty
+        if lookup.checked_live:
+            classification.confidence = min(1.0, classification.confidence + 0.05)
+    return classification
