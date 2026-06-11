@@ -32,16 +32,22 @@ def _offline_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "clearport_embeddings_backend", "local", raising=False)
     monkeypatch.setattr(settings, "clearport_episodic_backend", "memory", raising=False)
     monkeypatch.setattr(settings, "clearport_prompts_backend", "local", raising=False)
+    # Keep HS validation offline (bundled USITC subheading table) so unit tests
+    # never touch the live hts.usitc.gov API.
+    monkeypatch.setattr(settings, "clearport_hts_backend", "off", raising=False)
 
     # Reset shared stores so collections do not leak across tests.
     from clearport.memory.episodic import reset_episodic
     from clearport.memory.vector_store import reset_memory_stores
+    from clearport.validation.hts_client import get_hts_validator
     from clearport.validation.regional_overlay import reset_overlay
 
+    get_hts_validator.cache_clear()
     reset_memory_stores()
     reset_episodic()
     reset_overlay()
     yield
+    get_hts_validator.cache_clear()
     reset_memory_stores()
     reset_episodic()
     reset_overlay()

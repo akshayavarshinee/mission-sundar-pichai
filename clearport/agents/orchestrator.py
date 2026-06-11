@@ -11,6 +11,7 @@ the Phoenix MCP toolset for the Agent Builder surface.
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 from enum import Enum
 
 import structlog
@@ -37,9 +38,27 @@ from clearport.schemas import (
     PatchProposal,
     RejectionEvent,
     RiskAssessment,
+    TraceStep,
 )
 
 logger = structlog.get_logger(__name__)
+
+
+@contextmanager
+def _timed_step(tracer, name: str, steps: list[TraceStep]):  # noqa: ANN001
+    """Open the step's OTel span and record its wall-clock duration.
+
+    The same measurement that becomes a Phoenix span is also captured locally so
+    the dashboard can render a faithful trace waterfall offline.
+    """
+    start = time.perf_counter()
+    with tracer.start_as_current_span(name) as span:
+        try:
+            yield span
+        finally:
+            steps.append(
+                TraceStep(name=name, duration_ms=round((time.perf_counter() - start) * 1000, 3))
+            )
 
 
 class LoopStatus(str, Enum):
@@ -59,6 +78,7 @@ class LoopResult(BaseModel):
     status: LoopStatus
     recovery_seconds: float = 0.0
     vetoed_lesson_ids: list[str] = Field(default_factory=list)
+    trace_steps: list[TraceStep] = Field(default_factory=list)
 
 
 class RecoveryLoop:
@@ -71,6 +91,7 @@ class RecoveryLoop:
 
     def run(self, rejection: RejectionEvent) -> LoopResult:
         tracer = get_tracer("clearport.loop")
+        steps: list[TraceStep] = []
         t0 = time.perf_counter()
         with tracer.start_as_current_span("recover") as span:
             span.set_attribute("clearport.rejection_id", rejection.id)
@@ -81,7 +102,7 @@ class RecoveryLoop:
             if rejection.seed_id:
                 span.set_attribute("clearport.seed_id", rejection.seed_id)
 
-            with tracer.start_as_current_span("recall") as rspan:
+            with _timed_step(tracer, "recall", steps) as rspan:
                 memory = recall(rejection, episodic=self.episodic)
                 rspan.set_attribute("clearport.memory.lessons_distilled", len(memory.lessons))
                 rspan.set_attribute(
@@ -92,29 +113,40 @@ class RecoveryLoop:
                 )
                 rspan.set_attribute("clearport.memory.precedents", len(memory.precedents))
 
-            with tracer.start_as_current_span("diagnose") as gspan:
+            with _timed_step(tracer, "diagnose", steps) as gspan:
                 diagnosis = self.auditor.diagnose(rejection, memory)
                 gspan.set_attribute("clearport.root_cause", diagnosis.root_cause)
                 gspan.set_attribute(
                     "clearport.diagnose.law_citations", len(diagnosis.law_citations)
                 )
 
-            with tracer.start_as_current_span("patch") as pspan:
+            with _timed_step(tracer, "patch", steps) as pspan:
                 patch = self.patcher.patch(rejection, diagnosis)
                 pspan.set_attribute("clearport.patch.field_count", len(patch.field_diff))
 
-            with tracer.start_as_current_span("verify") as vspan:
+            with _timed_step(tracer, "verify", steps) as vspan:
                 baseline = get_baseline(rejection.normalized_error_type, episodic=self.episodic)
-                verdict = self.judge.evaluate(rejection, patch, baseline)
+                verdict = self.judge.evaluate(rejection, patch, baseline, diagnosis=diagnosis)
                 vspan.set_attribute("clearport.eval_passed", verdict.passed)
                 vspan.set_attribute("clearport.eval_confidence", verdict.confidence)
+                # Record the full evaluation as span attributes so the verdict is
+                # a first-class, visible artifact in the Phoenix trace (the eval
+                # conscience), not just a pass/fail bit.
+                vspan.set_attribute("clearport.eval.confidence_basis", verdict.confidence_basis)
+                vspan.set_attribute("clearport.eval.judge_model", verdict.judge_model)
+                vspan.set_attribute("clearport.eval.structural_match", verdict.rubric.structural_match)
+                vspan.set_attribute(
+                    "clearport.eval.required_fields_ok", verdict.rubric.required_fields_ok
+                )
+                vspan.set_attribute("clearport.eval.value_sanity", verdict.rubric.value_sanity)
+                vspan.set_attribute("clearport.eval.law_consistent", verdict.rubric.law_consistent)
 
-            with tracer.start_as_current_span("decide") as dspan:
+            with _timed_step(tracer, "decide", steps) as dspan:
                 risk = assess(rejection, patch, verdict)
                 dspan.set_attribute("clearport.decision", risk.decision.value)
                 dspan.set_attribute("clearport.hard_line", risk.hard_line_triggered)
 
-            with tracer.start_as_current_span("act") as aspan:
+            with _timed_step(tracer, "act", steps) as aspan:
                 execution, status, action = self._act(rejection, patch, risk)
                 aspan.set_attribute("clearport.status", status.value)
 
@@ -123,7 +155,7 @@ class RecoveryLoop:
                 rejection, patch, execution, action, recovery_seconds
             )
 
-            with tracer.start_as_current_span("learn") as lspan:
+            with _timed_step(tracer, "learn", steps) as lspan:
                 self._learn(rejection, patch, verdict, risk, outcome)
                 lspan.set_attribute("clearport.memory_key", outcome.memory_key)
                 lspan.set_attribute("clearport.outcome.action", outcome.action.value)
@@ -142,6 +174,7 @@ class RecoveryLoop:
             status=status,
             recovery_seconds=recovery_seconds,
             vetoed_lesson_ids=memory.vetoed_lesson_ids,
+            trace_steps=steps,
         )
 
     # ── act / outcome / learn ────────────────────────────────────────────

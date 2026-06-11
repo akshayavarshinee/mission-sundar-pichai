@@ -8,6 +8,7 @@ EasyPost test mode and by ClearPort's policy lint), except the clean control.
     S2  cotton tees      $3,200 NOEEI but >= $2,500        -> EEI_THRESHOLD_MISMATCH ($-veto)
     S3  spice sampler    $40    restricted, no comments     -> RESTRICTION_COMMENTS_MISSING (danger escalate)
     S4  silk scarf       $90    certify=true, signer=""     -> SIGNER_MISSING (fast auto heal)
+    S5  sitar bridge     $140   novel item, invalid HS      -> HS_INVALID (earned eval-gate VETO)
     C0  silk scarf       $90    clean control               -> accepted
     W1  artisan bundle   $120   contents=other, no expl.    -> CONTENTS_EXPLANATION_MISSING (live wildcard)
 """
@@ -203,7 +204,32 @@ W1 = SeedShipment(
     ),
 )
 
-SEEDS: list[SeedShipment] = [S1, S2, S3, S4, C0, W1]
+S5 = SeedShipment(
+    id="S5",
+    persona="India -> US specialty instrument-maker (novel case)",
+    note=(
+        "Obscure item the keyword table cannot classify + invalid HS -> the "
+        "eval-gate VETO is genuinely earned (no sabotaged classifier)."
+    ),
+    expected_error=NormalizedErrorType.HS_INVALID,
+    payload=CustomsPayload(
+        contents_type=ContentsType.MERCHANDISE,
+        customs_certify=True,
+        customs_signer="Ravi Menon",
+        items=[
+            CustomsItemSpec(
+                description="Hand-carved rosewood sitar bridge (jawari)",
+                quantity=2,
+                value=140.0,
+                weight_oz=10.0,
+                origin_country="IN",
+                hs_tariff_number="9999",  # invalid (4 digits) and genuinely novel
+            )
+        ],
+    ),
+)
+
+SEEDS: list[SeedShipment] = [S1, S2, S3, S4, S5, C0, W1]
 _SEED_INDEX = {s.id: s for s in SEEDS}
 
 

@@ -143,6 +143,77 @@ def _coerce_examples(mcp_result) -> list[dict]:  # noqa: ANN001
     return [d for d in data if isinstance(d, dict)]
 
 
+class PhoenixClientEpisodicMemory(InMemoryEpisodicMemory):
+    """In-process Phoenix dataset backend via ``arize-phoenix-client`` (HTTP).
+
+    Unlike :class:`PhoenixEpisodicMemory` (which shells out to the ``npx`` MCP
+    server per call), this keeps the request loop fast: reads are served from an
+    in-process cache hydrated once from the Phoenix dataset, while every write is
+    *mirrored* into the real Phoenix dataset (memory tier ②) so outcomes show up
+    in the Phoenix UI and persist across restarts. Phoenix being unreachable
+    degrades to pure in-memory behaviour — the loop never blocks on telemetry.
+    """
+
+    def __init__(self, dataset: str | None = None) -> None:
+        super().__init__()
+        self.dataset = dataset or settings.phoenix_dataset
+        self._client = None
+        self._hydrated = False
+
+    @property
+    def client(self):  # noqa: ANN201 — phoenix.client.Client, imported lazily
+        if self._client is None:
+            from phoenix.client import Client
+
+            self._client = Client(
+                base_url=settings.phoenix_host,
+                api_key=settings.phoenix_api_key,
+            )
+        return self._client
+
+    def _hydrate(self) -> None:
+        if self._hydrated:
+            return
+        self._hydrated = True
+        try:
+            dataset = self.client.datasets.get_dataset(dataset=self.dataset)
+        except Exception as exc:  # noqa: BLE001 — first run / unreachable Phoenix
+            logger.info("episodic.phoenix_client.hydrate_skip", error=str(exc))
+            return
+        for ex in getattr(dataset, "examples", []) or []:
+            self._rows.append(
+                {
+                    "id": ex.get("id", new_id("ex")),
+                    "input": ex.get("input") or ex.get("inputs") or {},
+                    "output": ex.get("output") or ex.get("outputs") or {},
+                    "metadata": ex.get("metadata") or {},
+                }
+            )
+
+    def add_example(self, input: dict, output: dict, metadata: dict | None = None) -> str:  # noqa: A002
+        self._hydrate()
+        ex_id = super().add_example(input, output, metadata)
+        self._mirror(input, output, {**(metadata or {}), "id": ex_id})
+        return ex_id
+
+    def _mirror(self, input: dict, output: dict, metadata: dict) -> None:  # noqa: A002
+        try:
+            self.client.datasets.add_examples_to_dataset(
+                dataset=self.dataset, inputs=[input], outputs=[output], metadata=[metadata]
+            )
+        except Exception:  # noqa: BLE001 — dataset may not exist yet; create it
+            try:
+                self.client.datasets.create_dataset(
+                    name=self.dataset, inputs=[input], outputs=[output], metadata=[metadata]
+                )
+            except Exception as exc:  # noqa: BLE001 — never break the loop on telemetry
+                logger.warning("episodic.phoenix_client.mirror_failed", error=str(exc))
+
+    def get_examples(self, where: dict | None = None, k: int | None = None) -> list[dict]:
+        self._hydrate()
+        return super().get_examples(where=where, k=k)
+
+
 _DEFAULT: EpisodicMemory | None = None
 
 
@@ -150,7 +221,12 @@ def get_episodic() -> EpisodicMemory:
     global _DEFAULT
     if _DEFAULT is None:
         backend = (settings.clearport_episodic_backend or "memory").lower()
-        _DEFAULT = PhoenixEpisodicMemory() if backend == "phoenix" else InMemoryEpisodicMemory()
+        if backend in ("phoenix-client", "client"):
+            _DEFAULT = PhoenixClientEpisodicMemory()
+        elif backend == "phoenix":
+            _DEFAULT = PhoenixEpisodicMemory()
+        else:
+            _DEFAULT = InMemoryEpisodicMemory()
     return _DEFAULT
 
 

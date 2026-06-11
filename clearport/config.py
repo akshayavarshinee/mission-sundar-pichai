@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     easypost_api_key: str | None = None
     easypost_mode: str = "test"
 
+    # ── USITC HTS (Harmonized Tariff Schedule) validation ─────────────────
+    # "auto" tries the live USITC REST API then falls back to the bundled
+    # offline subheading table; "live" forces live; "off" uses the table only.
+    clearport_hts_backend: str = "auto"
+    clearport_hts_base_url: str = "https://hts.usitc.gov/reststop"
+    clearport_hts_timeout: float = 4.0
+
     # ── Persistence ───────────────────────────────────────────────────────
     database_url: str = (
         "postgresql+psycopg://clearport:clearport@localhost:5432/clearport"
@@ -82,6 +89,11 @@ class Settings(BaseSettings):
     # ── Learning / promotion ──────────────────────────────────────────────
     clearport_promotion_min_evidence: int = 3
     clearport_promotion_margin: float = 0.10
+    # "off" keeps promotion fully deterministic + offline; "on" additionally
+    # registers a native Phoenix experiment (real experiment_id, visible in the
+    # Phoenix UI) when a Phoenix server is reachable. The promotion decision is
+    # always computed deterministically, so the loop never blocks on Phoenix.
+    clearport_phoenix_experiments: str = "off"
 
     # ── Drift ─────────────────────────────────────────────────────────────
     clearport_drift_window: int = 10

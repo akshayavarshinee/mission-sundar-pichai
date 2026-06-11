@@ -16,19 +16,18 @@ import structlog
 
 from clearport import llm
 from clearport.config import settings
+from clearport.eval.confidence import eval_confidence
 from clearport.memory.prompts import get_prompt
 from clearport.schemas import (
+    Diagnosis,
     EvalRubric,
     EvalVerdict,
-    NormalizedErrorType,
     PatchProposal,
     RejectionEvent,
 )
 from clearport.validation.errors import policy_lint
 
 logger = structlog.get_logger(__name__)
-
-_LOW_CERTAINTY_ERRORS = {NormalizedErrorType.UNKNOWN, NormalizedErrorType.OVERLAY_SCHEMA_DRIFT}
 
 
 class Judge:
@@ -37,21 +36,23 @@ class Judge:
         rejection: RejectionEvent,
         patch: PatchProposal,
         baseline: list[dict] | None = None,
+        diagnosis: Diagnosis | None = None,
     ) -> EvalVerdict:
-        rubric, confidence = self._deterministic(rejection, patch)
+        rubric = self._deterministic(patch)
         judge_model = "deterministic-policy"
         rationale = self._deterministic_rationale(rubric)
 
-        # Tighten with Gemini when available (AND-combine; never loosens).
+        # Tighten with Gemini when available (AND-combine; never loosens). The
+        # model decides the rubric booleans only — the confidence *scalar* is
+        # computed from evidence below, never taken from the model's self-report.
         try:
-            m_rubric, m_conf, m_rationale = self._model_judgement(rejection, patch, baseline or [])
+            m_rubric, m_rationale = self._model_judgement(rejection, patch, baseline or [])
             rubric = EvalRubric(
                 structural_match=rubric.structural_match and m_rubric.structural_match,
                 required_fields_ok=rubric.required_fields_ok and m_rubric.required_fields_ok,
                 value_sanity=rubric.value_sanity and m_rubric.value_sanity,
                 law_consistent=rubric.law_consistent and m_rubric.law_consistent,
             )
-            confidence = round((confidence + m_conf) / 2, 3)
             rationale = m_rationale or rationale
             judge_model = settings.clearport_judge_model
         except llm.LLMUnavailable:
@@ -60,14 +61,22 @@ class Judge:
             logger.warning("judge.model_failed", error=str(exc))
 
         passed = rubric.all_pass
-        if not passed:
-            confidence = min(confidence, 0.4)
+        # Evidence-derived confidence: rubric outcome + law grounding + precedent
+        # coverage − error-type ambiguity. Deterministic and inspectable.
+        result = eval_confidence(
+            rubric=rubric,
+            error_type=rejection.normalized_error_type,
+            law_citations=diagnosis.law_citations if diagnosis else None,
+            baseline=baseline,
+            has_changes=bool(patch.field_diff),
+        )
 
         verdict = EvalVerdict(
             patch_id=patch.id,
             judge_model=judge_model,
             passed=passed,
-            confidence=confidence,
+            confidence=result.score,
+            confidence_basis=result.basis,
             rubric=rubric,
             rationale=rationale,
         )
@@ -75,15 +84,14 @@ class Judge:
             "judge.verdict",
             patch=patch.id,
             passed=passed,
-            confidence=confidence,
+            confidence=result.score,
+            confidence_basis=result.basis,
             model=judge_model,
         )
         return verdict
 
     # ── deterministic backstop ───────────────────────────────────────────
-    def _deterministic(
-        self, rejection: RejectionEvent, patch: PatchProposal
-    ) -> tuple[EvalRubric, float]:
+    def _deterministic(self, patch: PatchProposal) -> EvalRubric:
         payload = patch.patched_payload
         violation = policy_lint(payload)
 
@@ -94,18 +102,12 @@ class Judge:
             i.value > 0 and i.quantity > 0 and i.weight_oz > 0 for i in payload.items
         ) and payload.total_value > 0
 
-        rubric = EvalRubric(
+        return EvalRubric(
             structural_match=structural_match,
             required_fields_ok=required_fields_ok,
             value_sanity=value_sanity,
             law_consistent=law_consistent,
         )
-
-        if rubric.all_pass:
-            confidence = 0.6 if rejection.normalized_error_type in _LOW_CERTAINTY_ERRORS else 0.9
-        else:
-            confidence = 0.35
-        return rubric, confidence
 
     @staticmethod
     def _deterministic_rationale(rubric: EvalRubric) -> str:
@@ -126,7 +128,7 @@ class Judge:
     # ── Gemini judgement ─────────────────────────────────────────────────
     def _model_judgement(
         self, rejection: RejectionEvent, patch: PatchProposal, baseline: list[dict]
-    ) -> tuple[EvalRubric, float, str]:
+    ) -> tuple[EvalRubric, str]:
         examples = "\n".join(
             f"- {b.get('input', {}).get('summary', '')}" for b in baseline[:5]
         ) or "(no baseline yet)"
@@ -138,8 +140,7 @@ class Judge:
             f"Patched value: ${patch.patched_payload.total_value:.2f}\n"
             f"Historically accepted shipments:\n{examples}\n\n"
             'Return JSON {"structural_match":bool,"required_fields_ok":bool,'
-            '"value_sanity":bool,"law_consistent":bool,"confidence":number,'
-            '"rationale":string}.'
+            '"value_sanity":bool,"law_consistent":bool,"rationale":string}.'
         )
         data = llm.generate_json(get_prompt("judge"), user, temperature=0.0)
         rubric = EvalRubric(
@@ -148,5 +149,4 @@ class Judge:
             value_sanity=bool(data.get("value_sanity", False)),
             law_consistent=bool(data.get("law_consistent", False)),
         )
-        confidence = float(data.get("confidence", 0.5) or 0.5)
-        return rubric, confidence, str(data.get("rationale", ""))
+        return rubric, str(data.get("rationale", ""))

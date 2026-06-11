@@ -11,6 +11,7 @@ from __future__ import annotations
 import structlog
 
 from clearport import llm
+from clearport.eval.confidence import diagnosis_confidence
 from clearport.memory.prompts import get_prompt
 from clearport.memory.recall import RecalledMemory
 from clearport.schemas import Diagnosis, NormalizedErrorType, RejectionEvent
@@ -69,12 +70,20 @@ _DIAGNOSIS_MAP: dict[NormalizedErrorType, tuple[str, list[str], float]] = {
 
 class Auditor:
     def diagnose(self, rejection: RejectionEvent, memory: RecalledMemory) -> Diagnosis:
-        root_cause, fields, confidence = _DIAGNOSIS_MAP.get(
+        root_cause, fields, base = _DIAGNOSIS_MAP.get(
             rejection.normalized_error_type, _DIAGNOSIS_MAP[NormalizedErrorType.UNKNOWN]
         )
 
-        if memory.lessons:
-            confidence = min(0.99, confidence + 0.03)
+        # Evidence-derived confidence: the per-rule base certainty, raised by law
+        # grounding, corroborating precedent, and distilled lessons. The model's
+        # self-assessment is deliberately not averaged in.
+        conf = diagnosis_confidence(
+            error_type=rejection.normalized_error_type,
+            base=base,
+            law_citations=memory.law_citations,
+            precedents=memory.precedents,
+            lessons=len(memory.lessons),
+        )
 
         diagnosis = Diagnosis(
             rejection_id=rejection.id,
@@ -83,7 +92,8 @@ class Auditor:
             law_citations=memory.law_citations,
             retrieved_lessons=memory.lessons,
             precedent_examples=memory.precedents,
-            confidence=confidence,
+            confidence=conf.score,
+            confidence_basis=conf.basis,
         )
 
         # Optionally enrich the narrative with Gemini, grounded by memory.
@@ -120,7 +130,4 @@ class Auditor:
             base.root_cause = str(data["root_cause"])
         if isinstance(data.get("affected_fields"), list) and data["affected_fields"]:
             base.affected_fields = [str(f) for f in data["affected_fields"]]
-        if data.get("confidence") is not None:
-            # average model + heuristic for calibration
-            base.confidence = round((base.confidence + float(data["confidence"])) / 2, 3)
         return base

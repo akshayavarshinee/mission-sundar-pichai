@@ -21,8 +21,10 @@ from clearport.schemas import (
     ActionType,
     CarrierResult,
     CustomsPayload,
+    Lane,
     PatchProposal,
     RejectionEvent,
+    new_id,
     utcnow,
 )
 from clearport.seeds.shipments import get_seed
@@ -48,6 +50,51 @@ class ClearPortService:
         if rejection is None:
             self.bus.publish("shipment_accepted", {"seed_id": seed_id})
             return None
+        return self.submit_rejection(rejection)
+
+    def submit_custom(
+        self,
+        payload: CustomsPayload,
+        *,
+        lane: Lane | None = None,
+        persona: str | None = None,
+        shipper_name: str | None = None,
+    ) -> RecoveryRun | None:
+        """Run a user-submitted declaration through the same recovery loop.
+
+        Builds an ad-hoc shipment from the operator's declaration, validates it on
+        the real surface (EasyPost test mode or the offline policy lint), and — if
+        it trips a rule — recovers it exactly like a seed. A clean declaration is
+        accepted with nothing to recover. ``seed_id`` is left ``None`` so the UI
+        can distinguish a real submission from a demo seed.
+        """
+        from clearport.seeds.shipments import (
+            BUYER_US,
+            DEFAULT_PARCEL,
+            LANE_IN_US,
+            SELLER_IN,
+            SeedShipment,
+        )
+
+        from_address = (
+            SELLER_IN.model_copy(update={"name": shipper_name}) if shipper_name else SELLER_IN
+        )
+        shipment = SeedShipment(
+            id=new_id("ship"),
+            persona=persona or "Submitted shipment",
+            note="",
+            lane=lane or LANE_IN_US,
+            from_address=from_address,
+            to_address=BUYER_US,
+            parcel=DEFAULT_PARCEL,
+            payload=payload,
+            expected_error=None,
+        )
+        rejection = run_seed(shipment)
+        if rejection is None:
+            self.bus.publish("shipment_accepted", {"seed_id": None, "persona": shipment.persona})
+            return None
+        rejection.seed_id = None  # a real (non-demo) submission
         return self.submit_rejection(rejection)
 
     def submit_rejection(self, rejection: RejectionEvent) -> RecoveryRun:

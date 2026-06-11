@@ -9,8 +9,25 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# TLS roots for outbound HTTPS — the live USITC HTS tariff API and the npm
+# registry both need a CA bundle, which the slim base image omits.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install the uv package manager for fast, reproducible installs.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Node 20 for the @arizeai/phoenix-mcp server (the *active* half of the Arize
+# integration, launched on demand via npx by the ADK toolset and the MCP
+# handshake). Copied from the official slim image to keep the Python base small,
+# then the MCP package is pre-warmed so the first agent call at runtime does not
+# pay the npx download cost.
+COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && npm install -g @arizeai/phoenix-mcp@latest
 
 # Resolve dependencies first for better layer caching.
 COPY pyproject.toml README.md ./

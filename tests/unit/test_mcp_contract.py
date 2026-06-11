@@ -62,3 +62,10 @@ def test_required_tools_cover_three_load_bearing_uses() -> None:
     assert {"get-trace", "get-spans"} <= REQUIRED_TOOLS
     assert {"get-dataset-examples", "add-dataset-examples"} <= REQUIRED_TOOLS
     assert {"list-experiments-for-dataset", "get-experiment-by-id"} <= REQUIRED_TOOLS
+
+
+def test_required_tools_match_prompt_backend_calls() -> None:
+    # Guard the exact tool names the prompts ④ backend invokes at runtime, so the
+    # handshake validates the surface the code actually depends on (not a stale
+    # alias). See clearport.memory.prompts.get_prompt / upsert_prompt.
+    assert {"get-prompt-by-identifier", "upsert-prompt"} <= REQUIRED_TOOLS

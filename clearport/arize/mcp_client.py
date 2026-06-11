@@ -23,7 +23,10 @@ from clearport.config import settings
 logger = structlog.get_logger(__name__)
 
 # Tool names exposed by @arizeai/phoenix-mcp that ClearPort relies on. Kept
-# explicit so we fail loudly if the server surface changes under us.
+# explicit so we fail loudly if the server surface changes under us. Every name
+# here is verified against the published tool coverage (v4.x) AND is actually
+# called somewhere in ClearPort (prompts ④, episodic datasets ②, experiments,
+# and span/trace read-back), so the handshake guards the real runtime surface.
 REQUIRED_TOOLS: frozenset[str] = frozenset(
     {
         "list-projects",
@@ -31,12 +34,13 @@ REQUIRED_TOOLS: frozenset[str] = frozenset(
         "get-spans",
         "get-span-annotations",
         "list-datasets",
+        "get-dataset",
         "get-dataset-examples",
         "add-dataset-examples",
         "list-experiments-for-dataset",
         "get-experiment-by-id",
         "list-prompts",
-        "get-prompt",
+        "get-prompt-by-identifier",
         "upsert-prompt",
     }
 )

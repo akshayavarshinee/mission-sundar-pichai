@@ -75,9 +75,16 @@ def law_veto(
         if payload.total_value >= EEI_THRESHOLD_USD and "NOEEI" in fix:
             vetoed = True
     elif et is NormalizedErrorType.HS_INVALID:
+        # An HS_INVALID lesson exists to supply a *correct* tariff code. Veto it
+        # if it proposes a numeric code that fails HTS validation — including a
+        # too-short attempt like "1234" that the 6/10-digit pattern would miss.
         match = _HS_RE.search(lesson.recommended_fix or "")
         if match and not hs_is_valid(match.group(1)):
             vetoed = True
+        elif not match:
+            numeric = re.findall(r"\d+", lesson.recommended_fix or "")
+            if numeric and not any(hs_is_valid(tok) for tok in numeric):
+                vetoed = True
 
     if not vetoed:
         return False, None
