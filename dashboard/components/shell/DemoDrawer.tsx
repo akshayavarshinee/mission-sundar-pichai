@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import {
-  Database,
   GraduationCap,
   Play,
   RotateCcw,
@@ -24,7 +23,7 @@ export default function DemoDrawer({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { seeds, busy, recover, learn, drift, playDemo, seedHistory, reset } = useWorkspace();
+  const { seeds, busy, recover, learn, drift, playDemo, reset } = useWorkspace();
 
   const fireSeed = async (seedId: string) => {
     const run = await recover(seedId);
@@ -70,22 +69,6 @@ export default function DemoDrawer({
               <RotateCcw className="h-4 w-4" />
               {busy === "reset" ? "Resetting…" : "Reset board"}
             </button>
-          </div>
-
-          <div className="rounded-lg border border-edge bg-panel2 p-3">
-            <button
-              className="btn btn-accent w-full"
-              disabled={busy !== null}
-              onClick={seedHistory}
-            >
-              <Database className="h-4 w-4" />
-              {busy === "seed" ? "Building learning history…" : "Seed rich history"}
-            </button>
-            <p className="mt-2 text-[11px] leading-relaxed text-faint">
-              Runs ~24 real recoveries — cold-start escalations, human corrections, promoted
-              lessons, then self-heals from memory — so the Intelligence page shows learning
-              over time. Resets the board first.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

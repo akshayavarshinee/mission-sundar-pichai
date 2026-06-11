@@ -278,19 +278,6 @@ def memory_episodic() -> list[dict]:
     return get_service().loop.episodic.get_examples()
 
 
-@app.get("/api/intelligence")
-def intelligence() -> dict:
-    """Aggregate LTM + Arize usage and the over-time improvement series.
-
-    Powers the dashboard's Intelligence page: live memory-tier counts, the Arize
-    Phoenix touchpoints (traces, eval-gate, experiments, datasets, MCP tools),
-    and a per-run progression series that shows the system getting smarter.
-    """
-    from clearport.api.intelligence import compute_intelligence
-
-    return compute_intelligence(get_service()).model_dump()
-
-
 @app.post("/api/learn")
 def learn() -> list[dict]:
     """Run experiment-gated promotion (② -> ③) and report the outcome."""
@@ -319,20 +306,6 @@ def demo_play() -> dict:
     from clearport.api.demo_runner import play_scripted_demo
 
     return play_scripted_demo(get_service())
-
-
-@app.post("/api/demo/seed-history")
-def demo_seed_history() -> dict:
-    """Generate a deep, real learning history so the Intelligence page is rich.
-
-    Drives the genuine recovery loop through cold-start escalations, human
-    corrections, experiment-gated promotion, self-heals from memory, an everyday
-    mix, and a drift event — populating all four memory tiers and the over-time
-    progression. Resettable via ``/api/reset``.
-    """
-    from clearport.api.seed_history import seed_rich_history
-
-    return seed_rich_history(get_service())
 
 
 @app.get("/api/events")
