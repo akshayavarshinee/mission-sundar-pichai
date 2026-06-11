@@ -54,6 +54,7 @@ interface WorkspaceValue {
   learn: () => Promise<void>;
   drift: (seedId: string) => Promise<void>;
   playDemo: () => Promise<void>;
+  seedHistory: () => Promise<void>;
   reset: () => Promise<void>;
   dismissDrift: () => void;
 }
@@ -193,6 +194,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (driftBeat && driftBeat.healed_status === "AUTO_RESOLVED") setDriftHealed(true);
   }, [withBusy]);
 
+  const seedHistory = useCallback(async () => {
+    setDriftAlert(null);
+    setDriftHealed(false);
+    await withBusy("seed", () => api.seedHistory());
+  }, [withBusy]);
+
   const reset = useCallback(async () => {
     await withBusy("reset", () => api.reset());
     setDriftAlert(null);
@@ -223,6 +230,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       learn,
       drift,
       playDemo,
+      seedHistory,
       reset,
       dismissDrift,
     }),
@@ -247,6 +255,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       learn,
       drift,
       playDemo,
+      seedHistory,
       reset,
       dismissDrift,
     ]
