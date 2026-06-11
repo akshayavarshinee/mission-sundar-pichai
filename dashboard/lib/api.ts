@@ -194,6 +194,121 @@ export interface LessonRecord {
   pass_rate: number;
 }
 
+// ── Intelligence: aggregated LTM + Arize usage and the over-time series ──
+// Shapes mirror clearport/api/intelligence.py (the backend source of truth).
+export interface TierUsage {
+  tier: string;
+  name: string;
+  backend: string;
+  count: number;
+  purpose: string;
+  detail: string[];
+}
+
+export interface MemoryIntel {
+  law_count: number;
+  episodic_total: number;
+  episodic_outcomes: number;
+  episodic_corrections: number;
+  episodic_accepted: number;
+  lessons_count: number;
+  prompts_count: number;
+  prompt_names: string[];
+  tiers: TierUsage[];
+}
+
+export interface EvalGateIntel {
+  total: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  law_vetoes: number;
+  gemini_judged: number;
+  judge_model: string;
+}
+
+export interface DatasetIntel {
+  name: string;
+  role: string;
+  examples: number;
+}
+
+export interface ArizeIntel {
+  live: boolean;
+  mode: string;
+  project: string;
+  tracing_endpoint: string;
+  traces_emitted: number;
+  spans_emitted: number;
+  eval_gate: EvalGateIntel;
+  experiments_won: number;
+  lessons_promoted: number;
+  datasets: DatasetIntel[];
+  mcp_tools: string[];
+  episodic_backend: string;
+  prompts_backend: string;
+  embeddings_backend: string;
+  vector_backend: string;
+}
+
+export interface ProgressionPoint {
+  index: number;
+  run_id: string;
+  created_at: string;
+  seed_id: string | null;
+  error_type: string;
+  recovery_seconds: number;
+  status: string;
+  decision: string;
+  eval_passed: boolean;
+  self_healed: boolean;
+  used_classifier: boolean;
+  cum_runs: number;
+  cum_auto: number;
+  cum_resolved: number;
+  cum_auto_pct: number;
+  cum_demurrage: number;
+  cum_lessons: number;
+}
+
+export interface SelfHealPair {
+  memory_key: string;
+  error_type: string;
+  first_seconds: number;
+  repeat_seconds: number;
+  speedup: number;
+  occurrences: number;
+  healed_from_memory: boolean;
+}
+
+export interface LessonProgressPoint {
+  promoted_at: string | null;
+  memory_key: string;
+  error_type: string;
+  recommended_fix: string;
+  baseline_score: number | null;
+  candidate_score: number | null;
+  pass_rate: number;
+  evidence_count: number;
+  cum_lessons: number;
+}
+
+export interface IntelligenceReport {
+  generated_at: string;
+  memory: MemoryIntel;
+  arize: ArizeIntel;
+  progression: ProgressionPoint[];
+  self_heal: SelfHealPair[];
+  lesson_timeline: LessonProgressPoint[];
+}
+
+export interface SeedHistoryResult {
+  runs_made: number;
+  lessons_promoted: number;
+  drift_healed: string | null;
+  metrics: Metrics;
+}
+
 // A declaration line as submitted by an operator.
 export interface SubmitItem {
   description: string;
@@ -278,8 +393,11 @@ export const api = {
     req<DriftResult>(`/api/drift/${seedId}`, { method: "POST" }),
   reset: () => req<{ status: string }>("/api/reset", { method: "POST" }),
   playDemo: () => req<DemoResult>("/api/demo/play", { method: "POST" }),
+  seedHistory: () =>
+    req<SeedHistoryResult>("/api/demo/seed-history", { method: "POST" }),
   memoryLaw: () => req<LawRecord[]>("/api/memory/law"),
   memoryLessons: () => req<LessonRecord[]>("/api/memory/lessons"),
+  intelligence: () => req<IntelligenceReport>("/api/intelligence"),
   health: () => req<Health>("/health"),
 };
 

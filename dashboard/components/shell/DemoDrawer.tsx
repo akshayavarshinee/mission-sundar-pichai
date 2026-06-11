@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import {
+  Database,
   GraduationCap,
   Play,
   RotateCcw,
@@ -23,7 +24,7 @@ export default function DemoDrawer({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { seeds, busy, recover, learn, drift, playDemo, reset } = useWorkspace();
+  const { seeds, busy, recover, learn, drift, playDemo, seedHistory, reset } = useWorkspace();
 
   const fireSeed = async (seedId: string) => {
     const run = await recover(seedId);
@@ -69,6 +70,17 @@ export default function DemoDrawer({
               <RotateCcw className="h-4 w-4" />
               {busy === "reset" ? "Resetting…" : "Reset board"}
             </button>
+          </div>
+
+          <div>
+            <button className="btn btn-good w-full" disabled={busy !== null} onClick={seedHistory}>
+              <Database className="h-4 w-4" />
+              {busy === "seed" ? "Seeding history…" : "Seed rich history"}
+            </button>
+            <p className="mt-1.5 text-[11px] text-muted">
+              Drives ~24 real recoveries so the Intelligence page shows auto-resolve climbing as
+              lessons are learned — nothing is faked; the genuine loop runs end-to-end.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

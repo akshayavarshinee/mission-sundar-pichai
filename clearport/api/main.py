@@ -308,6 +308,26 @@ def demo_play() -> dict:
     return play_scripted_demo(get_service())
 
 
+@app.post("/api/demo/seed-history")
+def demo_seed_history() -> dict:
+    """Seed a deep, real learning history by driving the genuine loop ~24 runs.
+
+    Never inserts rows directly — it submits/corrects/learns through the live
+    ``ClearPortService`` so the Intelligence page shows authentic progression.
+    """
+    from clearport.api.seed_history import seed_rich_history
+
+    return seed_rich_history(get_service())
+
+
+@app.get("/api/intelligence")
+def intelligence() -> dict:
+    """Aggregated LTM tiers + Arize touchpoints and the over-time progression."""
+    from clearport.api.intelligence import compute_intelligence
+
+    return compute_intelligence(get_service()).model_dump(mode="json")
+
+
 @app.get("/api/events")
 async def events() -> EventSourceResponse:
     bus = get_service().bus
