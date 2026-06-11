@@ -155,10 +155,17 @@ def _episodic_split(rows: list[dict]) -> tuple[int, int, int]:
 
 
 def _phoenix_live() -> bool:
+    # "Live" means a real Phoenix is in the loop. Mirror the backend factories'
+    # own notion of live (see memory/episodic.py + memory/prompts.py): episodic
+    # ② is live on the in-process arize-phoenix-client ("phoenix-client"/"client")
+    # or the MCP backend ("phoenix"); prompts ④ are live on "phoenix". A set
+    # Phoenix API key (Arize cloud) also counts.
+    episodic = (settings.clearport_episodic_backend or "").lower()
+    prompts = (settings.clearport_prompts_backend or "").lower()
     return (
         bool(settings.phoenix_api_key)
-        or settings.clearport_episodic_backend.lower() == "phoenix"
-        or settings.clearport_prompts_backend.lower() == "phoenix"
+        or episodic in {"phoenix", "phoenix-client", "client"}
+        or prompts == "phoenix"
     )
 
 

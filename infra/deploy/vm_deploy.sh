@@ -77,8 +77,9 @@ fi
 # ── 2. Tear down the current stack (keep volumes / DB data) ───────────────
 echo "▶ Stopping existing containers…"
 ${DOCKER} compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
-# Remove any stragglers by name, ignore if absent.
-${DOCKER} rm -f clearport-api clearport-dashboard clearport-phoenix clearport-db 2>/dev/null || true
+# Remove any stragglers by name (incl. the caddy front door on :80/:443), so a
+# re-deploy on an existing VM never hits "port is already allocated".
+${DOCKER} rm -f clearport-caddy clearport-api clearport-dashboard clearport-phoenix clearport-db 2>/dev/null || true
 
 # ── 3. Build both images locally (bake the IP into the dashboard bundle) ──
 echo "▶ Building backend image (clearport-api:local)…"
