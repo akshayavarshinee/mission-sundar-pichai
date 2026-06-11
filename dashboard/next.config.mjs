@@ -12,20 +12,17 @@ const nextConfig = {
     if (!upstream) return [];
 
     // Same-origin proxy: browser → Vercel (HTTPS) → GCP backend (HTTP/HTTPS).
-    // /api/events is handled by app/api/events/route.ts for reliable SSE streaming.
+    // A single catch-all forwards every current and future REST route, so new
+    // endpoints (e.g. /api/shipments, /api/runs/:id, /api/memory/*) work without
+    // maintaining a hand-written allow-list.
+    //
+    // /api/events is deliberately NOT listed: it is served by
+    // app/api/events/route.ts for reliable SSE streaming. As an `afterFiles`
+    // rewrite (the default when returning an array), the filesystem route
+    // takes precedence, so the catch-all never shadows the SSE handler.
     return [
       { source: "/health", destination: `${upstream}/health` },
-      { source: "/api/seeds", destination: `${upstream}/api/seeds` },
-      { source: "/api/runs", destination: `${upstream}/api/runs` },
-      { source: "/api/approvals", destination: `${upstream}/api/approvals` },
-      { source: "/api/metrics", destination: `${upstream}/api/metrics` },
-      { source: "/api/learn", destination: `${upstream}/api/learn` },
-      { source: "/api/reset", destination: `${upstream}/api/reset` },
-      { source: "/api/demo/play", destination: `${upstream}/api/demo/play` },
-      { source: "/api/recover/:seedId", destination: `${upstream}/api/recover/:seedId` },
-      { source: "/api/approvals/:runId/approve", destination: `${upstream}/api/approvals/:runId/approve` },
-      { source: "/api/approvals/:runId/reject", destination: `${upstream}/api/approvals/:runId/reject` },
-      { source: "/api/drift/:seedId", destination: `${upstream}/api/drift/:seedId` },
+      { source: "/api/:path*", destination: `${upstream}/api/:path*` },
     ];
   },
 };

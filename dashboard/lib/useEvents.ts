@@ -23,6 +23,8 @@ const EVENT_TYPES = [
   "drift_alert",
   "demo_beat",
   "demo_complete",
+  "seed_history_start",
+  "seed_history_complete",
   "reset",
 ];
 
