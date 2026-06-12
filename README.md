@@ -1,18 +1,22 @@
 <!-- markdownlint-disable MD033 MD041 -->
-<p align="center">
-  <img src="./docs/assets/infographics/clearport-dashboard-prototype.png" alt="ClearPort Customs Recovery Console" width="900"/>
-</p>
-
 <h1 align="center">ClearPort</h1>
 
 <p align="center">
   <strong>The autonomous customs-recovery layer with an evaluation conscience that learns.</strong><br/>
   Diagnose rejections · Patch declarations · An eval-gate (Arize Phoenix when live) must approve every fix before any real-money action — and that gate gets better with experience.
 </p>
+<p align="center">
+  <img src="./docs/assets/screenshots/Screenshot 2026-06-12 095334.png" alt="ClearPort Customs Recovery Console" width="900"/>
+  <img src="./docs/assets/screenshots/Screenshot 2026-06-12 095521.png" alt="ClearPort Customs Recovery Console" width="900"/>
+  <img src="./docs/assets/screenshots/Screenshot 2026-06-12 095635.png" alt="ClearPort Customs Recovery Console" width="900"/>
+  <img src="./docs/assets/screenshots/Screenshot 2026-06-12 095651.png" alt="ClearPort Customs Recovery Console" width="900"/>
+  <img src="./docs/assets/screenshots/Screenshot 2026-06-12 095706.png" alt="ClearPort Customs Recovery Console" width="900"/>
+  <img src="./docs/assets/screenshots/Screenshot 2026-06-12 095735.png" alt="ClearPort Customs Recovery Console" width="900"/>
+</p>
 
 <p align="center">
-  <a href="https://clearport-dynamite.vercel.app/"><img src="https://img.shields.io/badge/Live_Demo-Vercel-000000?style=for-the-badge&logo=vercel" alt="Live Demo"/></a>
-  <a href="https://34-134-197-83.sslip.io/health"><img src="https://img.shields.io/badge/API-Healthy-34A853?style=for-the-badge&logo=googlecloud" alt="API Health"/></a>
+  <a href="https://frontend-676765800108.us-east1.run.app/"><img src="https://img.shields.io/badge/Live_Demo-Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud" alt="Live Demo"/></a>
+  <a href="https://backend-676765800108.us-east1.run.app/health"><img src="https://img.shields.io/badge/API-Healthy-34A853?style=for-the-badge&logo=googlecloud" alt="API Health"/></a>
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge" alt="License"/>
   <img src="https://img.shields.io/badge/Built%20with-Gemini%203-4285F4?style=for-the-badge&logo=google" alt="Gemini 3"/>
   <img src="https://img.shields.io/badge/Arize-Phoenix%20MCP-FF5C00?style=for-the-badge" alt="Arize Phoenix"/>
@@ -35,14 +39,12 @@
 
 | Surface | URL | Notes |
 |---------|-----|-------|
-| **Dashboard (production)** | [**clearport-dynamite.vercel.app**](https://clearport-dynamite.vercel.app/) | Next.js on Vercel — REST + SSE proxied server-side |
-| **Backend API (HTTPS)** | [https://34-134-197-83.sslip.io](https://34-134-197-83.sslip.io) | FastAPI + agents on GCP VM (Caddy TLS) |
-| **Health check** | [https://34-134-197-83.sslip.io/health](https://34-134-197-83.sslip.io/health) | `{"status":"ok"}` when stack is up |
-| **Phoenix UI** | [http://34.134.197.83:6006](http://34.134.197.83:6006) | Traces, datasets, experiments (raw port; firewall-dependent) |
-| **Raw UI (VM)** | `http://34.134.197.83:3000` | Dashboard container when not on Vercel |
-| **Raw API (VM)** | `http://34.134.197.83:8080/health` | Direct backend port |
+| **Dashboard (production)** | [frontend-676765800108.us-east1.run.app](https://frontend-676765800108.us-east1.run.app/) | Next.js on Cloud Run; the browser calls the backend Cloud Run URL directly (CORS) |
+| **Backend API (HTTPS)** | [backend-676765800108.us-east1.run.app](https://backend-676765800108.us-east1.run.app/) | FastAPI + agents on Cloud Run |
+| **Health check** | [backend-676765800108.us-east1.run.app/health](https://backend-676765800108.us-east1.run.app/health) | `{"status":"ok"}` when the service is up |
+| **Phoenix UI** | [phoenix-676765800108.us-east1.run.app](https://phoenix-676765800108.us-east1.run.app/) | Traces, datasets, experiments (Cloud Run) |
 
-> **Try it:** Open the [live dashboard](https://clearport-dynamite.vercel.app/), click **Play full demo**, watch the eval-gate veto on the hard HS variant, approve an escalation, then **Trigger drift**. Full deploy guide: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
+> **Try it:** Open the [live dashboard](https://frontend-676765800108.us-east1.run.app/), click **Play full demo**, watch the eval-gate veto on the hard HS variant, approve an escalation, then **Trigger drift**. Full deploy guide: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
 ---
 
@@ -52,21 +54,21 @@
 
 | Format | How to view |
 |--------|-------------|
-| **Live web demo** | [clearport-dynamite.vercel.app](https://clearport-dynamite.vercel.app/) — click **▶ Play full demo** for the full 6-beat + wildcard storyboard |
-| **Console demo (offline)** | `uv run clearport-demo` — narrated walk-through, identical service code path (best for screen-recording) |
-| **Storyboard script** | [`docs/DEMO.md`](./docs/DEMO.md) — live-VM + Phoenix judge walkthrough with narration cues |
+| **Live web demo** | [frontend-676765800108.us-east1.run.app](https://frontend-676765800108.us-east1.run.app/) — click **▶ Play full demo** for the full 6-beat + wildcard storyboard |
+| **Console demo (offline)** | `uv run clearport-demo` — narrated walk-through, identical service code path |
+<!-- | **Storyboard script** | [`docs/DEMO.md`](./docs/DEMO.md) — live-VM + Phoenix judge walkthrough with narration cues | -->
 
 ### Prototype screenshots
 
-<p align="center">
+<!-- <p align="center">
   <img src="./docs/assets/infographics/clearport-dashboard-prototype.png" alt="ClearPort dashboard — metrics, trace timeline, eval verdict" width="800"/>
   <br/><em>Customs Recovery Console — live metrics, eval-gate verdicts, trace timeline, approval queue</em>
-</p>
+</p> -->
 
-<p align="center">
-  <img src="./docs/assets/clearport-split-architecture.png" alt="ClearPort deployment architecture — Vercel + GCP" width="800"/>
-  <br/><em>Production topology — Vercel frontend proxies REST + SSE to GCP backend stack</em>
-</p>
+<!-- <p align="center">
+  <img src="./docs/assets/clearport-split-architecture.png" alt="ClearPort deployment architecture — Cloud Run + pgvector VM" width="800"/>
+  <br/><em>Production topology — frontend, backend, and Phoenix on Cloud Run; pgvector (Postgres) on a GCE e2-small VM</em>
+</p> -->
 
 > **Recording tip:** Lead with the **eval-gate VETO** (hard HS variant), pay off with **self-heal from memory**, close on the **drift alert**. See [`docs/DEMO.md`](./docs/DEMO.md) for beat-by-beat narration.
 
@@ -215,7 +217,7 @@ flowchart TB
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
 | **A — Presentation** | Next.js 16 (App Router + Tailwind) | `Topbar`, `MetricsBar`, `SeedControls`, `TraceTimeline`, `EvalVerdictCard`, `ApprovalQueue`, `DriftBanner` |
-| **B — Orchestration** | FastAPI on a GCE VM (Docker Compose) | `/api/recover`, `/api/events` (SSE), `/api/approvals`, `/api/metrics`, `/api/learn`, `/api/drift`, `/api/eval/benchmark`, `/api/eval/judge`, `/api/investigate/{run_id}` |
+| **B — Orchestration** | FastAPI on Cloud Run | `/api/recover`, `/api/events` (SSE), `/api/approvals`, `/api/metrics`, `/api/learn`, `/api/drift`, `/api/eval/benchmark`, `/api/eval/judge`, `/api/investigate/{run_id}` |
 | **C — Agent runtime** | Google ADK + Gemini | Plain-Python closed loop (Orchestrator, Auditor, Patch Engine, Executor); "Self-Healer" is the eval/risk/learning/drift role. Also wrapped as an ADK `root_agent` |
 | **D — Validation** | EasyPost + Regional Overlay | Real carrier rejections + controllable silent schema-change surface |
 | **E — Memory** | Postgres/pgvector + Phoenix | ① law · ② episodic · ③ lessons · ④ prompts (Design B: semantic-first, **law has veto**) + an adjudication store (operational, mirrored into ②) |
@@ -468,8 +470,8 @@ ClearPort runs **100% offline by default** — every external dependency has a d
 | Carrier | EasyPost (test mode) |
 | Backend | FastAPI + Uvicorn + `sse-starlette` |
 | Dashboard | Next.js 16 (App Router) + Tailwind |
-| Persistence | Postgres + pgvector (SQLAlchemy + psycopg) — self-hosted container on the VM; schema from `infra/cloudsql/001_init.sql` |
-| Secrets / creds | `.env` on the VM + the VM's attached service account (ADC); no secrets in the repo |
+| Persistence | Postgres + pgvector (SQLAlchemy + psycopg) — a container on a small GCE VM (e2-small); schema from `infra/cloudsql/001_init.sql` |
+| Secrets / creds | Cloud Run service config + the service's attached service account (ADC); no secrets in the repo |
 | Local dev | Docker Compose (Phoenix `:6006`, Postgres `:5432`) |
 | Logging | structlog |
 
@@ -479,43 +481,41 @@ ClearPort runs **100% offline by default** — every external dependency has a d
 
 ## Deployment topology
 
+The hosted demo runs the three application services on **Google Cloud Run** (frontend, backend, Phoenix), each independently scalable, with **pgvector (Postgres)** as a container on a small **GCE e2-small VM** for persistent memory ①/③. The browser calls the backend Cloud Run URL directly (CORS-enabled), so there is no server-side proxy in the request path.
+
 ```mermaid
 flowchart TB
     subgraph Browser["Browser"]
         U[User]
     end
 
-    subgraph Vercel["Vercel — Frontend"]
-        NX[Next.js Dashboard]
-        PX[API Proxy / SSE]
-        NX --> PX
+    subgraph CR["Google Cloud Run — us-east1"]
+        FE[frontend — Next.js]
+        API[backend — FastAPI :8080]
+        PHX[phoenix — Arize Phoenix]
     end
 
-    subgraph GCP["GCE VM — Backend Stack"]
-        CD[Caddy HTTPS :443]
-        API[FastAPI :8080]
-        PHX[Phoenix :6006]
-        DB[(Postgres + pgvector)]
-        VTX[Vertex AI Gemini]
-
-        CD --> API
-        API --> PHX
-        API --> DB
-        API --> VTX
+    subgraph VM["GCE e2-small VM"]
+        DB[(Postgres + pgvector container)]
     end
 
-    U -->|HTTPS| NX
-    PX -->|REST + SSE| CD
-    U -. Phoenix traces .-> PHX
+    VTX[Vertex AI Gemini + embeddings]
+
+    U -->|HTTPS| FE
+    U -->|REST + SSE, CORS| API
+    API --> PHX
+    API --> DB
+    API --> VTX
+    U -. Phoenix UI .-> PHX
 ```
 
 | Resource | Service |
 |----------|---------|
-| GCE VM (Docker Compose) | Caddy (HTTPS :443), FastAPI backend, Next.js dashboard, Phoenix, Postgres — all containers on one VM |
-| Vercel (optional) | Hosted Next.js dashboard, proxying REST + SSE to the VM backend |
-| Postgres + pgvector | Self-hosted container on the VM — memory ①/③ + app state |
-| Arize Phoenix | Self-hosted container on the VM (`:6006`) — traces, datasets, experiments, prompts |
-| Vertex AI | Gemini (hosted demo: `gemini-2.5-pro`) + embeddings, via the VM's attached service account |
+| Cloud Run — `frontend` | Next.js dashboard; browser hits it over HTTPS, then calls the backend Cloud Run URL directly |
+| Cloud Run — `backend` | FastAPI + agents (REST + SSE), CORS-enabled for the frontend origin |
+| Cloud Run — `phoenix` | Arize Phoenix — traces, datasets, experiments, prompts |
+| GCE e2-small VM | Postgres + pgvector container — memory ①/③ + app state |
+| Vertex AI | Gemini (hosted demo: `gemini-2.5-pro`) + embeddings, via the service's attached service account |
 
 **Config-only switching** — every live backend toggled by env var (the hosted demo sets `pg` + `auto` embeddings + `phoenix-client`):
 
@@ -542,11 +542,10 @@ Full guide with screenshots and verification checklist: **[`docs/DEPLOYMENT.md`]
 
 | Mode | Command | Docs |
 |------|---------|------|
-| **Live demo** | [clearport-dynamite.vercel.app](https://clearport-dynamite.vercel.app/) | This README |
+| **Live demo** | [frontend-676765800108.us-east1.run.app](https://frontend-676765800108.us-east1.run.app/) | This README |
 | Offline demo | `uv run clearport-demo` | [`GUIDE.md`](./GUIDE.md) |
 | Local UI | `uv run clearport-api` + `cd dashboard && npm run dev` | [`dashboard/README.md`](./dashboard/README.md) |
-| Vercel + GCP split | Backend on VM, dashboard on Vercel | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) |
-| Full VM stack | `./infra/deploy/vm_deploy.sh` | [`infra/deploy/README.md`](./infra/deploy/README.md) |
+| Cloud Run + pgvector VM | Frontend / backend / Phoenix on Cloud Run, Postgres on an e2-small VM | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) |
 
 ### Option A — 60-second offline demo (no keys)
 
@@ -627,7 +626,7 @@ The four presentation infographics above follow the hackathon slide template sty
 - [x] **Gemini 3** (Vertex AI) + **Google ADK** `root_agent` surface
 - [x] **Arize Phoenix** load-bearing via `@arizeai/phoenix-mcp` + OpenInference OTel
 - [x] **Adaptive eval-gate** — a learned judge measured against an independent oracle (`clearport-judge-eval`)
-- [x] [Live deployment](https://clearport-dynamite.vercel.app/) on Vercel + GCP
+- [x] [Live deployment](https://frontend-676765800108.us-east1.run.app/) on Cloud Run + a pgvector VM
 - [x] Reproducible offline path (no keys)
 - [x] Four impact metrics on screen with stated assumptions
 
@@ -639,7 +638,7 @@ Implementation plan: [`ClearPort-Implementation-Plan.md`](../ClearPort-Implement
 
 | Doc | Contents |
 |-----|----------|
-| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Vercel + GCP split deploy, env matrix, troubleshooting |
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Cloud Run + pgvector VM deploy, env matrix, troubleshooting |
 | [`docs/DEMO.md`](./docs/DEMO.md) | 3-minute demo script & storyboard |
 | [`GUIDE.md`](./GUIDE.md) | Offline run guide (no keys) |
 | [`dashboard/README.md`](./dashboard/README.md) | UI components & local dev |

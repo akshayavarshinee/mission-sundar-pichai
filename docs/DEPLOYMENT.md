@@ -1,9 +1,14 @@
 # ClearPort Deployment Guide
 
-> **Deploy the Next.js dashboard on Vercel while the agent brain (FastAPI + Postgres + Phoenix) runs on GCP.**  
-> The Vercel frontend proxies every REST call and SSE stream to your backend stack — no mixed-content, no CORS hacks.
+> **Hosted demo:** the three application services run on **Google Cloud Run** (frontend, backend, Phoenix), with **pgvector (Postgres)** as a container on a small **GCE e2-small VM**.
+> The browser loads the frontend over HTTPS and calls the backend Cloud Run URL directly (CORS-enabled) for REST + SSE — no server-side proxy in the request path.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/akshayavarshinee/mission-sundar-pichai&root-directory=dashboard&env=NEXT_PUBLIC_API_BASE,BACKEND_UPSTREAM,NEXT_PUBLIC_PHOENIX_BASE&envDescription=See%20dashboard%2F.env.vercel.example&project-name=clearport-dashboard)
+| Service | URL |
+|---------|-----|
+| Frontend (Next.js) | <https://frontend-676765800108.us-east1.run.app/> |
+| Backend (FastAPI) | <https://backend-676765800108.us-east1.run.app/> |
+| Phoenix | <https://phoenix-676765800108.us-east1.run.app/> |
+| Postgres + pgvector | container on a GCE e2-small VM (private) |
 
 ---
 
@@ -26,9 +31,9 @@
 
 ## 1. Architecture at a glance
 
-![ClearPort split deployment — Vercel frontend + GCP backend stack](./assets/clearport-split-architecture.png)
+![ClearPort deployment — Cloud Run services + pgvector VM](./assets/clearport-split-architecture.png)
 
-ClearPort is **not a monorepo**. It is one Python package (`clearport/`) plus one Next.js app (`dashboard/`), orchestrated by Docker Compose in production.
+ClearPort is **not a monorepo**. It is one Python package (`clearport/`) plus one Next.js app (`dashboard/`). In the hosted demo each application service runs as its own Cloud Run service, and Postgres + pgvector runs as a container on a small GCE VM.
 
 ```mermaid
 flowchart TB
@@ -36,31 +41,26 @@ flowchart TB
         UI[ClearPort Dashboard]
     end
 
-    subgraph Vercel["☁️ Vercel (Frontend only)"]
-        Next[Next.js 16 App Router]
-        Proxy[API Rewrites + SSE Proxy]
-        Next --> Proxy
+    subgraph CR["☁️ Google Cloud Run — us-east1"]
+        FE[frontend — Next.js 16]
+        API[backend — FastAPI :8080]
+        Phoenix[phoenix — Arize Phoenix]
     end
 
-    subgraph GCP["🖥️ GCE VM — Backend Stack"]
-        Caddy[Caddy HTTPS :443]
-        API[FastAPI Backend :8080]
-        Phoenix[Arize Phoenix :6006]
-        DB[(Postgres + pgvector :5432)]
-        Gemini[Vertex AI / Gemini]
-        EasyPost[EasyPost Test API]
-
-        Caddy --> API
-        API --> Phoenix
-        API --> DB
-        API --> Gemini
-        API --> EasyPost
-        Phoenix -. OTLP traces .-> API
+    subgraph VM["🖥️ GCE e2-small VM"]
+        DB[(Postgres + pgvector container)]
     end
 
-    UI -->|HTTPS| Next
-    Proxy -->|REST + SSE| Caddy
-    UI -. Phoenix deep links .-> Phoenix
+    Gemini[Vertex AI / Gemini + embeddings]
+    EasyPost[EasyPost Test API]
+
+    UI -->|HTTPS| FE
+    UI -->|REST + SSE, CORS| API
+    API --> Phoenix
+    API --> DB
+    API --> Gemini
+    API --> EasyPost
+    UI -. Phoenix UI .-> Phoenix
 ```
 
 ### Repository layout
