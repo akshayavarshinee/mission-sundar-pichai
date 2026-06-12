@@ -70,7 +70,7 @@
   <br/><em>Production topology — frontend, backend, and Phoenix on Cloud Run; pgvector (Postgres) on a GCE e2-small VM</em>
 </p> -->
 
-> **Recording tip:** Lead with the **eval-gate VETO** (hard HS variant), pay off with **self-heal from memory**, close on the **drift alert**. See [`docs/DEMO.md`](./docs/DEMO.md) for beat-by-beat narration.
+
 
 ---
 
@@ -575,23 +575,6 @@ uv run clearport-hello-trace     # one Gemini call → Phoenix trace
 uv run clearport-mcp-handshake   # confirms Phoenix MCP + required tools
 ```
 
----
-
-## Demo storyboard
-
-**Hero persona:** India → US handicrafts MSME (Anaya Handicrafts → Dana Mercer).
-
-| Beat | Seed | What happens | Hero moment |
-|------|------|--------------|-------------|
-| 1 | S4 | Missing `customs_signer` → fast AUTO heal | Eval **PASS**, label bought |
-| 2 | Hard HS | Eval-gate **VETO** → escalate | **Money shot** — no spend |
-| 3 | — | Human corrects HS `830249` → **Run learning** → lesson **promoted** | Phoenix experiment beats baseline |
-| 4 | Same HS | Self-heals from memory (not classifier) | Self-heal speed-up rises |
-| 5 | S2 | Value > $2,500 → hard-line **ESCALATE** | Human approves |
-| 6 | Drift | Silent rule change → **DRIFT ALERT** → auto-heal | Banner turns green |
-| ⚡ | W1 | Missing `contents_explanation` → AUTO heal | Proves generality |
-
-Full narration: [`docs/DEMO.md`](./docs/DEMO.md)
 
 ---
 
@@ -631,17 +614,6 @@ The four presentation infographics above follow the hackathon slide template sty
 - [x] Four impact metrics on screen with stated assumptions
 
 Implementation plan: [`ClearPort-Implementation-Plan.md`](../ClearPort-Implementation-Plan.md)
-
----
-
-## Related docs
-
-| Doc | Contents |
-|-----|----------|
-| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Cloud Run + pgvector VM deploy, env matrix, troubleshooting |
-| [`docs/DEMO.md`](./docs/DEMO.md) | 3-minute demo script & storyboard |
-| [`GUIDE.md`](./GUIDE.md) | Offline run guide (no keys) |
-| [`dashboard/README.md`](./dashboard/README.md) | UI components & local dev |
 
 ---
 
