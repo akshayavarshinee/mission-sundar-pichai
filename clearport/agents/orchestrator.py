@@ -207,7 +207,14 @@ class RecoveryLoop:
             if execution.carrier_result is CarrierResult.ACCEPTED:
                 action = ActionType.AUTO_BOUGHT if execute else ActionType.PENDING
                 return execution, LoopStatus.AUTO_RESOLVED, action
-            return execution, LoopStatus.REJECTED, ActionType.PENDING
+            # The risk tier cleared this for auto-resolution and the eval-gate
+            # passed the patch, yet the live surface still refused it: a live HS
+            # miss the offline lint can't see, a second-surface overlay reject, or
+            # a transient carrier/network error. Never silently dead-end such a run
+            # as a terminal REJECTED the operator can't act on — escalate it to
+            # human review so it lands in the approval queue with the carrier's
+            # reason attached, where an operator can approve a retry or correct it.
+            return execution, LoopStatus.AWAITING_APPROVAL, ActionType.PENDING
         # HUMAN: validate (no purchase) and hold for approval.
         execution = self.executor.finalize(rejection, patch, buy=False, live=execute)
         return execution, LoopStatus.AWAITING_APPROVAL, ActionType.PENDING

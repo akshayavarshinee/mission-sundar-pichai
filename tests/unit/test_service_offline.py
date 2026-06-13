@@ -25,6 +25,33 @@ def test_auto_resolved_run() -> None:
     assert run.result.outcome.demurrage_saved_usd > 0
 
 
+def test_auto_execution_failure_escalates_not_dead_ends(monkeypatch) -> None:
+    """A run the risk tier cleared for AUTO whose live execution still fails must
+    escalate to human review (actionable in the approval queue), never silently
+    dead-end as a terminal REJECTED with resolved_at unset and no recourse."""
+    from clearport.agents.executor import Executor, ExecutionResult
+    from clearport.schemas import CarrierResult, Decision, RawError
+
+    def _failing_finalize(self, rejection, patch, *, buy, live=True):  # noqa: ANN001
+        return ExecutionResult(
+            carrier_result=CarrierResult.REJECTED,
+            raw_error=RawError(
+                code="HS_INVALID", message="live USITC miss", field="hs_tariff_number"
+            ),
+        )
+
+    monkeypatch.setattr(Executor, "finalize", _failing_finalize)
+    svc = _service()
+    run = svc.submit_seed("S1")  # risk -> AUTO, eval passes, but execution fails
+    assert run is not None
+    assert run.result.risk.decision is Decision.AUTO
+    assert run.result.verdict.passed is True
+    # Escalated to the human queue, not a dead-ended REJECTED.
+    assert run.status is RunStatus.AWAITING_APPROVAL
+    assert run.resolved_at is None
+    assert run in svc.list_approvals()
+
+
 def test_investigate_offline_is_deterministic() -> None:
     svc = _service()
     run = svc.submit_seed("S4")
