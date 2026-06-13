@@ -74,7 +74,7 @@ def run_demo() -> None:
     svc = ClearPortService()
 
     print("ClearPort — autonomous customs-recovery agent (offline demo)")
-    print("Gemini 3 · Google ADK · Arize Phoenix (eval-gate, experiments, drift)")
+    print("Gemini 2.5 · Google ADK · Arize Phoenix (eval-gate, experiments, drift)")
 
     # ── Beat 1: structural fix, fast auto-heal ───────────────────────────
     _h("Beat 1 — S4 missing customs_signer → fast AUTO heal")

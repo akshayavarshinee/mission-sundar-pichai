@@ -18,13 +18,13 @@
   <a href="https://frontend-676765800108.us-east1.run.app/"><img src="https://img.shields.io/badge/Live_Demo-Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud" alt="Live Demo"/></a>
   <a href="https://backend-676765800108.us-east1.run.app/health"><img src="https://img.shields.io/badge/API-Healthy-34A853?style=for-the-badge&logo=googlecloud" alt="API Health"/></a>
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Built%20with-Gemini%203-4285F4?style=for-the-badge&logo=google" alt="Gemini 3"/>
+  <img src="https://img.shields.io/badge/Built%20with-Gemini%203-4285F4?style=for-the-badge&logo=google" alt="Gemini 2.5"/>
   <img src="https://img.shields.io/badge/Arize-Phoenix%20MCP-FF5C00?style=for-the-badge" alt="Arize Phoenix"/>
 </p>
 
 <p align="center">
   Built for the <strong>Arize partner track</strong> of <em>Agents for Real-World Challenges</em> (Gemini hackathon).<br/>
-  Runtime brain: <strong>Gemini 3</strong> on Vertex AI, driving a fully-traced Python recovery loop (also exposed as a Google ADK agent) · Trust layer: <strong>Arize Phoenix</strong> via <code>arize-phoenix-client</code> + <code>@arizeai/phoenix-mcp</code> + OpenInference/OTel.
+  Runtime brain: <strong>Gemini 2.5</strong> on Vertex AI, driving a fully-traced Python recovery loop (also exposed as a Google ADK agent) · Trust layer: <strong>Arize Phoenix</strong> via <code>arize-phoenix-client</code> + <code>@arizeai/phoenix-mcp</code> + OpenInference/OTel.
 </p>
 
 ---
@@ -169,7 +169,7 @@ flowchart TB
         API --> SVC
     end
 
-    subgraph C["Layer C — Agent Runtime (ADK + Gemini 3)"]
+    subgraph C["Layer C — Agent Runtime (ADK + Gemini 2.5)"]
         ORCH[Orchestrator]
         AUD[Customs Auditor]
         PATCH[Document Patch Engine]
@@ -450,7 +450,7 @@ ClearPort runs **100% offline by default** — every external dependency has a d
 | Learning | Real deterministic experiment | Phoenix datasets/experiments |
 | Drift | Real monitor over simulated registry | Same |
 | Embeddings | Local feature-hashing (3072-d) | Vertex `gemini-embedding-001` |
-| LLM reasoning | Deterministic rule-based fallback | Gemini 3 |
+| LLM reasoning | Deterministic rule-based fallback | Gemini 2.5 |
 | Tracing | Best-effort no-op | OpenInference → Phoenix |
 
 **Scope guardrails:** EasyPost test mode only; never files to real government customs; Regional Overlay simulates a destination registry; structural/syntactic corrections only — final legal classification of high-value or restricted goods always routes to a human.
@@ -463,7 +463,7 @@ ClearPort runs **100% offline by default** — every external dependency has a d
 |----------|------------|
 | Language | Python 3.12 |
 | Agent framework | Google ADK `root_agent` surface (`adk_app.py`) over a plain-Python, fully-traced recovery loop |
-| LLM | Gemini 3 on Vertex AI via `CLEARPORT_GEMINI_MODEL` (repo default `gemini-3-pro`; hosted demo runs `gemini-2.5-pro`) |
+| LLM | Gemini 2.5 on Vertex AI via `CLEARPORT_GEMINI_MODEL` (repo default `gemini-3-pro`; hosted demo runs `gemini-2.5-pro`) |
 | Embeddings | Vertex `gemini-embedding-001` (3072-d) when live; deterministic local hashing (3072-d) offline |
 | Tracing / evals | `arize-phoenix-otel`, `arize-phoenix-evals`, OpenInference instrumentors |
 | MCP | `mcp` client → `@arizeai/phoenix-mcp` via `npx` |
@@ -606,7 +606,7 @@ The four presentation infographics above follow the hackathon slide template sty
 
 - [x] **Phase 0–11** — Full stack: agents, eval-gate, HITL, learning, drift, dashboard, metrics, demo
 - [x] Public repo · **Apache-2.0**
-- [x] **Gemini 3** (Vertex AI) + **Google ADK** `root_agent` surface
+- [x] **Gemini 2.5** (Vertex AI) + **Google ADK** `root_agent` surface
 - [x] **Arize Phoenix** load-bearing via `@arizeai/phoenix-mcp` + OpenInference OTel
 - [x] **Adaptive eval-gate** — a learned judge measured against an independent oracle (`clearport-judge-eval`)
 - [x] [Live deployment](https://frontend-676765800108.us-east1.run.app/) on Cloud Run + a pgvector VM

@@ -9,7 +9,7 @@ authors = [{ name = "ClearPort Contributors" }]
 keywords = ["agents", "customs", "arize", "phoenix", "gemini", "mcp", "evaluation"]
 
 dependencies = [
-    # ── Agent runtime (Gemini 3 + Google Cloud Agent Builder / ADK) ──
+    # ── Agent runtime (Gemini 2.5 + Google Cloud Agent Builder / ADK) ──
     "google-adk>=1.0.0",
     "google-genai>=1.0.0",
     "google-cloud-aiplatform>=1.60.0",
