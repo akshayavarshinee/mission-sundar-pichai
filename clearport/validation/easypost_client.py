@@ -49,6 +49,11 @@ class LabelResult(BaseModel):
     tracking_code: str | None = None
     rate_usd: float | None = None
     raw_error: RawError | None = None
+    # True when the shipment was created and customs cleared, but NO enabled
+    # carrier returned a purchasable rate for the lane (a carrier-coverage gap of
+    # the account — e.g. a test account whose carriers only serve US origins —
+    # NOT a customs rejection). The caller treats this as cleared-without-label.
+    no_rates: bool = False
 
 
 def _raw_error_from_exception(exc: Exception) -> RawError:
@@ -252,13 +257,47 @@ class EasyPostClient:
             rates_count=len(rates),
         )
 
+    @staticmethod
+    def _no_rate_reason(shipment) -> str:  # noqa: ANN001 — EasyPost Shipment
+        """Summarize the carrier messages explaining why a shipment has no rates."""
+        parts: list[str] = []
+        for m in getattr(shipment, "messages", []) or []:
+            carrier = getattr(m, "carrier", None) or "?"
+            text = getattr(m, "message", None)
+            if isinstance(text, (list, tuple)):
+                text = "; ".join(str(t) for t in text)
+            if text:
+                parts.append(f"{carrier}: {text}")
+        return " | ".join(parts[:6]) or "no enabled carrier returned a rate for this lane"
+
     def buy_cheapest(self, shipment_id: str) -> LabelResult:
-        """Buy the lowest test-mode rate (the gated real-money action)."""
+        """Buy the lowest test-mode rate (the gated real-money action).
+
+        Distinguishes two failure modes that must NOT be conflated:
+        * **no purchasable rate** — the shipment was created and customs cleared,
+          but no enabled carrier services the lane, so there is nothing to buy.
+          Reported via ``no_rates=True`` so the caller keeps the declaration
+          *cleared* (a carrier-coverage gap, not a customs rejection).
+        * **a genuine purchase error** — surfaced as a normal ``ok=False`` result.
+        """
         try:
             shipment = self.client.shipment.retrieve(shipment_id)
-            bought = self.client.shipment.buy(
-                shipment.id, rate=shipment.lowest_rate()
+        except Exception as exc:  # noqa: BLE001
+            return LabelResult(ok=False, shipment_id=shipment_id, raw_error=_raw_error_from_exception(exc))
+
+        rates = getattr(shipment, "rates", []) or []
+        if not rates:
+            reason = self._no_rate_reason(shipment)
+            logger.info("easypost.no_rates_for_lane", shipment_id=shipment_id, reason=reason)
+            return LabelResult(
+                ok=False,
+                no_rates=True,
+                shipment_id=shipment_id,
+                raw_error=RawError(code="NO_RATES_FOR_LANE", message=reason, field=None),
             )
+
+        try:
+            bought = self.client.shipment.buy(shipment.id, rate=shipment.lowest_rate())
         except Exception as exc:  # noqa: BLE001
             return LabelResult(ok=False, shipment_id=shipment_id, raw_error=_raw_error_from_exception(exc))
 

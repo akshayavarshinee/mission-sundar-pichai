@@ -130,6 +130,7 @@ def _run_summary(run: RecoveryRun) -> dict:
         "vetoed_lesson_ids": r.vetoed_lesson_ids,
         "recovery_seconds": r.recovery_seconds,
         "label_id": run.label_id,
+        "cleared_note": r.outcome.note,
         "demurrage_saved_usd": r.outcome.demurrage_saved_usd,
     }
 

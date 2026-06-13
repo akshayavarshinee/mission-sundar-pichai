@@ -102,6 +102,7 @@ export interface RunSummary {
   vetoed_lesson_ids: string[];
   recovery_seconds: number;
   label_id: string | null;
+  cleared_note: string | null;
   demurrage_saved_usd: number;
 }
 

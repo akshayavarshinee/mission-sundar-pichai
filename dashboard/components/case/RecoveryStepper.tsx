@@ -263,7 +263,7 @@ export default function RecoveryStepper({ run }: { run: RunSummary }) {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <span className="inline-flex items-center gap-1.5 font-medium text-good">
               <Check className="h-3.5 w-3.5" />
-              Label purchased ({errorLabel(run.error_type)} resolved)
+              {run.label_id ? "Label purchased" : "Customs cleared"} ({errorLabel(run.error_type)} resolved)
             </span>
             <span className="text-muted">recovered in {fmtSeconds(run.recovery_seconds)}</span>
             {run.demurrage_saved_usd > 0 ? (
@@ -279,6 +279,9 @@ export default function RecoveryStepper({ run }: { run: RunSummary }) {
         )}
         {run.label_id ? (
           <p className="mt-1 font-mono text-[11px] text-faint">label {run.label_id}</p>
+        ) : null}
+        {cleared && !run.label_id && run.cleared_note ? (
+          <p className="mt-1 text-[11px] text-muted">{run.cleared_note}</p>
         ) : null}
         <p className="mt-1 text-[11px] text-faint">
           {contentsLabel(run.contents_type)} · outcome written to episodic memory for next time.

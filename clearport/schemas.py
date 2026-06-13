@@ -414,6 +414,12 @@ class Outcome(BaseModel):
     recovery_seconds: float = 0.0
     demurrage_saved_usd: float = 0.0
     human_correction: CustomsPayload | None = None
+    # Set when the declaration cleared but no shipping label was purchased because
+    # no enabled carrier services the lane (carrier-coverage gap, not a rejection).
+    note: str | None = None
+    # Set when the declaration cleared but no shipping label was purchased because
+    # no enabled carrier services the lane (carrier-coverage gap, not a rejection).
+    note: str | None = None
 
 
 class DistilledLesson(BaseModel):

@@ -256,6 +256,7 @@ class ClearPortService:
         if accepted:
             self._mark_resolved(run, RunStatus.HUMAN_APPROVED, ActionType.HUMAN_APPROVED,
                                  execution.label_id, note)
+            run.result.outcome.note = execution.note
         else:
             run.status = RunStatus.REJECTED
             run.resolved_at = utcnow()
@@ -294,6 +295,7 @@ class ClearPortService:
         if accepted:
             self._mark_resolved(run, RunStatus.HUMAN_CORRECTED, ActionType.HUMAN_CORRECTED,
                                  execution.label_id, note)
+            run.result.outcome.note = execution.note
         else:
             run.status = RunStatus.REJECTED
             run.resolved_at = utcnow()
