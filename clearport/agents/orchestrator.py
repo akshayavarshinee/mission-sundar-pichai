@@ -196,6 +196,7 @@ class RecoveryLoop:
             recovery_seconds=recovery_seconds,
             vetoed_lesson_ids=memory.vetoed_lesson_ids,
             trace_steps=steps,
+            verify_span_id=verify_span_id,
         )
 
     # ── act / outcome / learn ────────────────────────────────────────────
@@ -214,6 +215,13 @@ class RecoveryLoop:
             # as a terminal REJECTED the operator can't act on — escalate it to
             # human review so it lands in the approval queue with the carrier's
             # reason attached, where an operator can approve a retry or correct it.
+            logger.error(
+                "executor_rejected",
+                carrier_result=execution.carrier_result.value,
+                raw_error=(
+                    execution.raw_error.message if execution.raw_error else None
+                ),
+            )
             return execution, LoopStatus.AWAITING_APPROVAL, ActionType.PENDING
         # HUMAN: validate (no purchase) and hold for approval.
         execution = self.executor.finalize(rejection, patch, buy=False, live=execute)
@@ -242,6 +250,7 @@ class RecoveryLoop:
             label_id=execution.label_id,
             recovery_seconds=recovery_seconds,
             demurrage_saved_usd=round(demurrage, 2),
+            note=execution.note,
         )
 
     def _learn(

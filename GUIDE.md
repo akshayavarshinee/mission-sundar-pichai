@@ -159,7 +159,7 @@ Being honest about this is part of the pitch:
 | Experiment-gated learning | **Real logic**, deterministic | same, with Phoenix datasets/experiments |
 | Drift detection | **Real** monitor over a **simulated** registry we own (never fakes EasyPost) | same |
 | Embeddings | **Local** feature-hashing (3072-d) | Vertex `gemini-embedding-001` |
-| LLM reasoning | deterministic rule-based fallback | Gemini 3 |
+| LLM reasoning | deterministic rule-based fallback | Gemini 2.5 |
 | Tracing | best-effort no-op | OpenInference → Phoenix |
 
 ---
@@ -191,7 +191,7 @@ Set these in `.env` (backend) — code never changes. See [clearport/config.py](
 
 | Capability | Env vars |
 |---|---|
-| Gemini 3 brain | `GOOGLE_API_KEY` *(or Vertex: `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`)* |
+| Gemini 2.5 brain | `GOOGLE_API_KEY` *(or Vertex: `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`)* |
 | Phoenix tracing | `PHOENIX_COLLECTOR_ENDPOINT`, `PHOENIX_API_KEY` |
 | Phoenix MCP memory ② / prompts ④ | `CLEARPORT_EPISODIC_BACKEND=phoenix`, `CLEARPORT_PROMPTS_BACKEND=phoenix` |
 | Vertex embeddings | `CLEARPORT_EMBEDDINGS_BACKEND=vertex` |

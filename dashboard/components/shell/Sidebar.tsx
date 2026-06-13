@@ -65,7 +65,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       <div className="border-t border-edge px-4 py-3 text-[11px] leading-relaxed text-faint">
-        Gemini 3 · Google ADK · Arize Phoenix
+        Gemini 2.5 · Google ADK · Arize Phoenix
         <br />
         EasyPost test mode
       </div>

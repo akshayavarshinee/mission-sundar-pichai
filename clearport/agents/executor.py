@@ -25,6 +25,9 @@ class ExecutionResult(BaseModel):
     rate_usd: float | None = None
     raw_error: RawError | None = None
     bought: bool = False
+    # Set when the declaration cleared but no label could be purchased because no
+    # enabled carrier services the lane (carrier-coverage gap, not a rejection).
+    note: str | None = None
 
 
 class Executor:
@@ -94,6 +97,30 @@ class Executor:
                 label_id=label.label_id,
                 rate_usd=label.rate_usd,
                 bought=True,
+            )
+        if label and label.no_rates:
+            # The declaration CLEARED customs (CustomsInfo + Shipment created,
+            # compliance + live HS all passed) but no enabled carrier services
+            # this lane, so there is no label to buy. That is a carrier-coverage
+            # gap of the account, not a customs rejection — keep it ACCEPTED so
+            # an AUTO clear resolves and a human approval does not read as
+            # "could not clear". A real carrier for the lane buys a label as before.
+            origin = rejection.from_address.country if rejection.from_address else "?"
+            note = (
+                f"Customs cleared. No carrier on this EasyPost account services "
+                f"origin {origin} for this lane, so no shipping label was purchased."
+            )
+            logger.info(
+                "executor.cleared_without_label",
+                origin=origin,
+                shipment_id=vr.shipment_id,
+                reason=label.raw_error.message if label.raw_error else None,
+            )
+            return ExecutionResult(
+                carrier_result=CarrierResult.ACCEPTED,
+                shipment_id=vr.shipment_id,
+                bought=False,
+                note=note,
             )
         return ExecutionResult(
             carrier_result=CarrierResult.REJECTED,
